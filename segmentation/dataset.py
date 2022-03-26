@@ -17,7 +17,8 @@ from PIL import Image
 import numpy as np
 
 
-@gin.configurable(allowlist=['mean', 'std', 'min_window_size', 'max_window_size', 'length_multiplier'])
+@gin.configurable(allowlist=['mean', 'std', 'min_window_size', 'max_window_size', 'length_multiplier',
+                             'transpose_ann', 'balance_classes'])
 class SlidingWindowDataset(VisionDataset):
     def __init__(
             self,
@@ -86,6 +87,7 @@ class SlidingWindowDataset(VisionDataset):
         self.img_id2idx = {img_id: i for i, img_id in enumerate(self.img_ids)}
         self.cls2images = np.load(os.path.join(data_path, 'class2images', split_key, 'cls2img.npz'))
         self.cls2images = {int(k): v for k, v in self.cls2images.items()}
+        self.class_nums = list(sorted(self.cls2images.keys()))
 
         if bool(int(os.environ['LOAD_IMAGES_RAM'])):
             log(f"Loading {len(self.img_ids)} samples from {split_key} set to memory...")
@@ -124,6 +126,7 @@ class SlidingWindowDataset(VisionDataset):
     def __getitem__(self, index: int) -> Any:
         try:
             target = int(index / self.length_multiplier)
+            target = self.class_nums[target]
 
             img_id = np.random.choice(self.cls2images[target])
             img_index = self.img_id2idx[img_id]
