@@ -30,6 +30,8 @@ class SlidingWindowDataset(VisionDataset):
             min_window_size: int = gin.REQUIRED,
             max_window_size: int = gin.REQUIRED,
             length_multiplier: int = gin.REQUIRED,
+            transpose_ann: bool = gin.REQUIRED,
+            balance_classes: bool = gin.REQUIRED,
     ):
         assert 0 < min_window_size <= max_window_size <= 1024
 
@@ -43,6 +45,8 @@ class SlidingWindowDataset(VisionDataset):
         self.annotations_dir = os.path.join(data_path, 'annotations', split_key)
         self.push_prototypes = push_prototypes
         self.length_multiplier = length_multiplier
+        self.transpose_ann = transpose_ann
+        self.balance_classes = balance_classes
 
         # we generated cityscapes images with max margin of 512 earlier
         self.img_dir = os.path.join(data_path, f'img_with_margin_512/{split_key}')
@@ -106,7 +110,9 @@ class SlidingWindowDataset(VisionDataset):
 
             with Image.open(img_path) as img:
                 images.append(img.convert('RGB'))
-            annotations[i] = np.load(ann_path).transpose()
+            annotations[i] = np.load(ann_path)
+            if self.transpose_ann:
+                annotations[i] = annotations[i].transpose()
 
         return images, annotations
 
@@ -128,7 +134,9 @@ class SlidingWindowDataset(VisionDataset):
                     with Image.open(img_path) as img:
                         img = img.convert('RGB')
 
-                    ann = np.load(ann_path).transpose()
+                    ann = np.load(ann_path)
+                    if self.transpose_ann:
+                        ann = ann.transpose()
 
                     self.cached_img = img, ann
                     self.cached_img_id = img_id

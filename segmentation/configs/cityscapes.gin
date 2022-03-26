@@ -23,6 +23,8 @@ SlidingWindowDataset.max_window_size = 336
 SlidingWindowDataset.length_multiplier = 50
 SlidingWindowDataset.mean = [0.28689554, 0.32513303, 0.28389177]
 SlidingWindowDataset.std = [0.18696375, 0.19017339, 0.18720214]
+SlidingWindowDataset.transpose_ann = True
+SlidingWindowDataset.balance_classes = True
 
 SlidingWindowDataModule.dataloader_n_jobs = 4
 DataLoader.batch_size = 64
