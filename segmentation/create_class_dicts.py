@@ -19,7 +19,7 @@ def get_cls2img_parallel(args):
     cls_counts = Counter()
 
     for ann_path in paths_chunk:
-        img_id = ann_path.split('.')[-2].split('/')[-1]
+        img_id = '.'.join(ann_path.split('.')[:-1]).split('/')[-1]
         ann = np.load(ann_path)
 
         for cls_num in np.unique(ann):
