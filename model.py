@@ -1,7 +1,6 @@
 import gin
 import torch
 import torch.nn as nn
-import torch.utils.model_zoo as model_zoo
 import torch.nn.functional as F
 
 from resnet_features import resnet18_features, resnet34_features, resnet50_features, resnet101_features, resnet152_features
@@ -51,14 +50,15 @@ class PPNet(nn.Module):
         Without domain specific knowledge we allocate the same number of
         prototypes for each class
         '''
-        assert(self.num_prototypes % self.num_classes == 0)
+        assert self.num_prototypes % (self.num_classes-1) == 0
+
         # a onehot indication matrix for each prototype's class identity
         self.prototype_class_identity = torch.zeros(self.num_prototypes,
                                                     self.num_classes)
 
-        num_prototypes_per_class = self.num_prototypes // self.num_classes
-        for j in range(self.num_prototypes):
-            self.prototype_class_identity[j, j // num_prototypes_per_class] = 1
+        num_prototypes_per_class = self.num_prototypes // (self.num_classes - 1)
+        for i in range(1, self.num_classes):
+            self.prototype_class_identity[(i-1)*num_prototypes_per_class:i*num_prototypes_per_class, i] = 1
 
         self.proto_layer_rf_info = proto_layer_rf_info
 
