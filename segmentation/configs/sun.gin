@@ -25,6 +25,7 @@ SlidingWindowDataset.mean = [0.496, 0.463, 0.438]
 SlidingWindowDataset.std = [0.228, 0.232, 0.231]
 SlidingWindowDataset.transpose_ann = False
 SlidingWindowDataset.balance_classes = True
+SlidingWindowDataset.image_margin_size = 112
 
 SlidingWindowDataModule.dataloader_n_jobs = 4
 DataLoader.batch_size = 64

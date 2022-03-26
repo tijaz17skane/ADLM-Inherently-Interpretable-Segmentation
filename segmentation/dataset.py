@@ -18,7 +18,7 @@ import numpy as np
 
 
 @gin.configurable(allowlist=['mean', 'std', 'min_window_size', 'max_window_size', 'length_multiplier',
-                             'transpose_ann', 'balance_classes'])
+                             'transpose_ann', 'balance_classes', 'image_margin_size'])
 class SlidingWindowDataset(VisionDataset):
     def __init__(
             self,
@@ -33,6 +33,7 @@ class SlidingWindowDataset(VisionDataset):
             length_multiplier: int = gin.REQUIRED,
             transpose_ann: bool = gin.REQUIRED,
             balance_classes: bool = gin.REQUIRED,
+            image_margin_size: int = 512
     ):
         assert 0 < min_window_size <= max_window_size <= 1024
 
@@ -51,9 +52,10 @@ class SlidingWindowDataset(VisionDataset):
         self.length_multiplier = length_multiplier
         self.transpose_ann = transpose_ann
         self.balance_classes = balance_classes
+        self.image_margin_size = image_margin_size
 
-        # we generated cityscapes images with max margin of 512 earlier
-        self.img_dir = os.path.join(data_path, f'img_with_margin_512/{split_key}')
+        # we generated cityscapes images with max margin earlier
+        self.img_dir = os.path.join(data_path, f'img_with_margin_{self.image_margin_size}/{split_key}')
 
         if push_prototypes:
             transform = transforms.Compose([
@@ -156,9 +158,9 @@ class SlidingWindowDataset(VisionDataset):
             cls_idx = np.argwhere(ann == target)
             pixel_i = np.random.randint(0, cls_idx.shape[0])
 
-            # image has additional margin of 512, so we add it to get the central pixel location in the image
-            window_center1 = cls_idx[pixel_i, 0] + 512
-            window_center2 = cls_idx[pixel_i, 1] + 512
+            # image has additional margin, so we add it to get the central pixel location in the image
+            window_center1 = cls_idx[pixel_i, 0] + self.image_margin_size
+            window_center2 = cls_idx[pixel_i, 1] + self.image_margin_size
 
             window_size = np.random.randint(self.min_window_size, self.max_window_size+1)
             margin_size = int(window_size/2)

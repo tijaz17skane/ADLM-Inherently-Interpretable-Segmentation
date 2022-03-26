@@ -27,10 +27,8 @@ class SlidingWindowDataModule(LightningDataModule):
         self.model_image_size = model_image_size
 
     def prepare_data(self):
-        if (not os.path.exists(os.path.join(data_path, 'annotations'))) or \
-                (not os.path.exists(os.path.join(data_path, 'img_with_margin_512'))):
-            raise ValueError("Please download Cityscapes dataset and preprocess "
-                             "it using 'cityscapes/preprocess.py' script")
+        if not os.path.exists(os.path.join(data_path, 'annotations')):
+            raise ValueError("Please download dataset and preprocess it using 'preprocess.py' script")
 
     def get_data_loader(self, dataset: SlidingWindowDataset) -> DataLoader:
         return DataLoader(
