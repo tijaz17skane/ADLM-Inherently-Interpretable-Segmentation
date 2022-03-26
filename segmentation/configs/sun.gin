@@ -1,0 +1,47 @@
+# base config for training SUN RGB-D model
+
+Trainer.gpus = 1
+
+construct_PPNet.base_architecture = 'resnet50'
+construct_PPNet.pretrained = True
+construct_PPNet.prototype_shape = (380, 512, 1, 1)
+construct_PPNet.num_classes = 38
+construct_PPNet.prototype_activation_function = 'log'
+construct_PPNet.add_on_layers_type = 'bottleneck'
+
+train.model_image_size = 224
+train.random_seed = 20220227
+train.early_stopping_patience_main = 25
+train.early_stopping_patience_last_layer = 25
+train.start_checkpoint = ''
+
+SlidingWindowModule.class_specific = True
+SlidingWindowDataset.min_window_size = 112
+SlidingWindowDataset.max_window_size = 224
+SlidingWindowDataset.length_multiplier = 50
+SlidingWindowDataset.mean = [0.496, 0.463, 0.438]
+SlidingWindowDataset.std = [0.228, 0.232, 0.231]
+
+SlidingWindowDataModule.dataloader_n_jobs = 4
+DataLoader.batch_size = 64
+
+Trainer.max_epochs = 1000
+SlidingWindowModule.num_warm_epochs = 20
+SlidingWindowModule.loss_weight_crs_ent = 1.0
+SlidingWindowModule.loss_weight_clst = 0.8
+SlidingWindowModule.loss_weight_sep = -0.08
+SlidingWindowModule.loss_weight_l1 = 1e-4
+SlidingWindowModule.joint_optimizer_lr_features = 2e-5
+SlidingWindowModule.joint_optimizer_lr_add_on_layers = 1e-3
+SlidingWindowModule.joint_optimizer_lr_prototype_vectors = 1e-3
+SlidingWindowModule.joint_optimizer_weight_decay = 1e-4
+SlidingWindowModule.warm_optimizer_lr_add_on_layers = 1e-3
+SlidingWindowModule.warm_optimizer_lr_prototype_vectors = 1e-3
+SlidingWindowModule.warm_optimizer_weight_decay = 1e-4
+SlidingWindowModule.last_layer_optimizer_lr = 2e-5
+SlidingWindowModule.warmup_batches = 200
+
+ReduceLROnPlateau.mode = 'max'
+ReduceLROnPlateau.factor = 0.5
+ReduceLROnPlateau.patience = 10
+ReduceLROnPlateau.min_lr = 1e-7
