@@ -41,6 +41,7 @@ def create_class_dicts(chunk_size: int = 100, n_jobs: int = -1, include_test: bo
         cls2images = defaultdict(list)
         annotations_dir = os.path.join(data_path, 'annotations', split_key)
         output_dir = os.path.join(data_path, 'class2images', split_key)
+        os.makedirs(output_dir, exist_ok=True)
 
         all_paths = [os.path.join(annotations_dir, p) for p in os.listdir(annotations_dir) if p.endswith('.npy')]
 
