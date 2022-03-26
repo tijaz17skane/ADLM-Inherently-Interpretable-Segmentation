@@ -13,28 +13,21 @@ from collections import Counter, defaultdict
 import json
 
 
-def save_cls2pixel_parallel(args):
-    paths_chunk, output_dir, output_cls2idx_dir = args
+def get_cls2img_parallel(args):
+    paths_chunk, split_key = args
     cls2images = defaultdict(list)
     cls_counts = Counter()
 
     for ann_path in paths_chunk:
         img_id = ann_path.split('.')[-2].split('/')[-1]
         ann = np.load(ann_path)
-        cls2idx = {}
 
         for cls_num in np.unique(ann):
             str_cls = str(cls_num)
             cls2images[str_cls].append(img_id)
 
-            is_cls = ann == cls_num
-            cls_idx = np.argwhere(is_cls)
-
-            cls2idx[str_cls] = cls_idx
-
-            cls_counts[str_cls] += np.sum(is_cls)
-
-        np.savez(os.path.join(output_cls2idx_dir, f'{img_id}.npz'), **cls2idx)
+            if split_key == 'train':
+                cls_counts[str_cls] += np.sum(ann == cls_num)
 
     return cls_counts, cls2images
 
@@ -47,21 +40,19 @@ def create_class_dicts(chunk_size: int = 100, n_jobs: int = -1, include_test: bo
     for split_key in splits:
         cls2images = defaultdict(list)
         annotations_dir = os.path.join(data_path, 'annotations', split_key)
-        output_dir = os.path.join(data_path, 'class2pixel', split_key)
-        output_cls2idx_dir = os.path.join(data_path, 'class2pixel', split_key, 'cls2idx')
-        os.makedirs(output_cls2idx_dir, exist_ok=True)
+        output_dir = os.path.join(data_path, 'class2images', split_key)
 
         all_paths = [os.path.join(annotations_dir, p) for p in os.listdir(annotations_dir) if p.endswith('.npy')]
 
         n_chunks = max(1, int(np.ceil(len(all_paths) / chunk_size)))
         path_chunks = np.array_split(np.asarray(all_paths), n_chunks)
-        parallel_args = [(chunk, output_dir, output_cls2idx_dir) for chunk in path_chunks]
+        parallel_args = [(chunk, split_key) for chunk in path_chunks]
 
         n_jobs = multiprocessing.cpu_count() if n_jobs == -1 else n_jobs
-        print(f'{split_key} set - building class-to-pixel dictionaries in {n_chunks} chunks using {n_jobs} processes.')
+        print(f'{split_key} set - building class-to-image dictionary in {n_chunks} chunks using {n_jobs} processes.')
         pool = multiprocessing.Pool()
 
-        for chunk_cls_counts, chunk_cls2img in tqdm(pool.imap_unordered(save_cls2pixel_parallel, parallel_args),
+        for chunk_cls_counts, chunk_cls2img in tqdm(pool.imap_unordered(get_cls2img_parallel, parallel_args),
                                                     desc=split_key, total=len(parallel_args)):
             if split_key == 'train':
                 cls_counts += chunk_cls_counts
@@ -87,7 +78,7 @@ def create_class_dicts(chunk_size: int = 100, n_jobs: int = -1, include_test: bo
             cls_counts = {k: float(cls_counts[k] / total_cls_counts) for k
                           in sorted(cls_counts.keys(), key=lambda k: -cls_counts[k])}
 
-            with open(os.path.join(data_path, 'class2pixel/class_counts.json'), 'w') as fp:
+            with open(os.path.join(data_path, 'class2images/class_counts.json'), 'w') as fp:
                 json.dump(cls_counts, fp, indent=2)
 
 
