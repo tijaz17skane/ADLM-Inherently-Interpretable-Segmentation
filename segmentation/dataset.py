@@ -87,7 +87,8 @@ class SlidingWindowDataset(VisionDataset):
             self.img_ids = json.load(fp)[split_key]
 
         self.img_id2idx = {img_id: i for i, img_id in enumerate(self.img_ids)}
-        self.cls2images = np.load(os.path.join(data_path, 'class2images', split_key, 'cls2img.npz'))
+        with open(os.path.join(data_path, 'class2images', split_key, 'cls2img.json'), 'r') as fp:
+            self.cls2images = json.load(fp)
         self.cls2images = {int(k): v for k, v in self.cls2images.items()}
         self.class_nums = list(sorted(self.cls2images.keys()))
 

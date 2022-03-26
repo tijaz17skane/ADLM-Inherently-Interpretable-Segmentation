@@ -51,7 +51,7 @@ def create_class_dicts(chunk_size: int = 100, n_jobs: int = -1, include_test: bo
 
         n_jobs = multiprocessing.cpu_count() if n_jobs == -1 else n_jobs
         print(f'{split_key} set - building class-to-image dictionary in {n_chunks} chunks using {n_jobs} processes.')
-        pool = multiprocessing.Pool()
+        pool = multiprocessing.Pool(n_jobs)
 
         for chunk_cls_counts, chunk_cls2img in tqdm(pool.imap_unordered(get_cls2img_parallel, parallel_args),
                                                     desc=split_key, total=len(parallel_args)):
@@ -60,8 +60,6 @@ def create_class_dicts(chunk_size: int = 100, n_jobs: int = -1, include_test: bo
 
             for c, paths in chunk_cls2img.items():
                 cls2images[c] = cls2images[c] + paths
-
-        cls2images = {k: np.asarray(v) for k, v in cls2images.items()}
 
         print()
         print(f'{split_key} set. Image counts for each class:')
@@ -72,7 +70,8 @@ def create_class_dicts(chunk_size: int = 100, n_jobs: int = -1, include_test: bo
             assert len(set(cls2images[k])) == len(cls2images[k])
         print()
 
-        np.savez(os.path.join(output_dir, 'cls2img.npz'), **cls2images)
+        with open(os.path.join(output_dir, 'cls2img.json'), 'w') as fp:
+            json.dump(cls2images, fp)
 
         if split_key == 'train':
             total_cls_counts = sum(cls_counts.values())

@@ -74,7 +74,7 @@ def train(
             neptune_logger = NeptuneLogger(
                 project="mikolajsacha/protobased-research",
                 tags=[config_path, 'protopnet'],
-                name=experiment_name[0]
+                name=experiment_name
             )
             loggers.append(neptune_logger)
 
