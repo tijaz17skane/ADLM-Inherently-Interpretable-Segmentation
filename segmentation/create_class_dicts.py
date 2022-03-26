@@ -4,6 +4,8 @@ This allows for training a sliding window segmentation model that is balanced wi
 """
 import multiprocessing
 import os
+
+import argh
 from tqdm import tqdm
 from settings import data_path
 import numpy as np
@@ -55,8 +57,9 @@ def create_class_dicts(chunk_size: int = 100, n_jobs: int = -1, include_test: bo
         path_chunks = np.array_split(np.asarray(all_paths), n_chunks)
         parallel_args = [(chunk, output_dir, output_cls2idx_dir) for chunk in path_chunks]
 
-        print(f'{split_key} set - building class-to-pixel dictionaries in {n_chunks} chunks.')
-        pool = multiprocessing.Pool(multiprocessing.cpu_count() if n_jobs == -1 else n_jobs)
+        n_jobs = multiprocessing.cpu_count() if n_jobs == -1 else n_jobs
+        print(f'{split_key} set - building class-to-pixel dictionaries in {n_chunks} chunks using {n_jobs} processes.')
+        pool = multiprocessing.Pool()
 
         for chunk_cls_counts, chunk_cls2img in tqdm(pool.imap_unordered(save_cls2pixel_parallel, parallel_args),
                                                     desc=split_key, total=len(parallel_args)):
@@ -89,4 +92,4 @@ def create_class_dicts(chunk_size: int = 100, n_jobs: int = -1, include_test: bo
 
 
 if __name__ == '__main__':
-    create_class_dicts()
+    argh.dispatch_command(create_class_dicts)
