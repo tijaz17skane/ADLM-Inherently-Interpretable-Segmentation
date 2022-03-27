@@ -37,8 +37,12 @@ def train(
         random_seed: int = gin.REQUIRED,
         early_stopping_patience_main: int = gin.REQUIRED,
         early_stopping_patience_last_layer: int = gin.REQUIRED,
-        start_checkpoint: str = ''
+        start_checkpoint: str = '',
+        start_epoch: int = 0
 ):
+    if start_epoch != 0 and not pruned:
+        raise NotImplementedError(f'start_epoch can be only set when pruned=True')
+
     seed_everything(random_seed)
 
     results_dir = os.path.join(os.environ['RESULTS_DIR'], experiment_name)
@@ -139,7 +143,7 @@ def train(
     ]
 
     module = SlidingWindowModule(
-        model_dir=os.path.join(results_dir, 'pruned'),
+        model_dir=os.path.join(results_dir, 'pruned') if pruned else results_dir,
         model_image_size=model_image_size,
         ppnet=ppnet,
         last_layer_only=True
@@ -148,7 +152,10 @@ def train(
     current_epoch = trainer.current_epoch
     trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
                       enable_progress_bar=False)
-    trainer.fit_loop.current_epoch = current_epoch + 1
+    if start_epoch != 0:
+        trainer.fit_loop.current_epoch = start_epoch
+    else:
+        trainer.fit_loop.current_epoch = current_epoch + 1
     trainer.fit(model=module, datamodule=data_module)
 
 
