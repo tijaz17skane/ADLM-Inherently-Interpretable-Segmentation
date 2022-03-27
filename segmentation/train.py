@@ -40,9 +40,6 @@ def train(
         start_checkpoint: str = '',
         start_epoch: int = 0
 ):
-    if start_epoch != 0 and not pruned:
-        raise NotImplementedError(f'start_epoch can be only set when pruned=True')
-
     seed_everything(random_seed)
 
     results_dir = os.path.join(os.environ['RESULTS_DIR'], experiment_name)
@@ -136,6 +133,20 @@ def train(
         log(f'Loading pruned model from {best_checkpoint}')
         ppnet = torch.load(best_checkpoint)
         ppnet = ppnet.cuda()
+        trainer = None
+
+        use_neptune = bool(int(os.environ['USE_NEPTUNE']))
+        if use_neptune:
+            neptune_logger = NeptuneLogger(
+                project="mikolajsacha/protobased-research",
+                tags=[config_path, 'protopnet', 'pruned'],
+                name=f'{experiment_name}_{pruned}'
+            )
+            loggers.append(neptune_logger)
+
+            neptune_run = neptune_logger.run
+            neptune_run['config_file'].upload(f'segmentation/configs/{config_path}.gin')
+            neptune_run['config'] = json_gin_config
 
     log('LAST LAYER FINE-TUNING')
     callbacks = [
@@ -149,7 +160,11 @@ def train(
         last_layer_only=True
     )
 
-    current_epoch = trainer.current_epoch
+    if trainer is not None:
+        current_epoch = trainer.current_epoch
+    else:
+        current_epoch = start_epoch
+
     trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
                       enable_progress_bar=False)
     if start_epoch != 0:
