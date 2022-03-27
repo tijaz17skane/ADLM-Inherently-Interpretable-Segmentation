@@ -68,6 +68,8 @@ class SlidingWindowDataModule(LightningDataModule):
             model_image_size=self.model_image_size,
             push_prototypes=True,
             min_window_size=224,
-            max_window_size=224
+            max_window_size=224,
+            balance_classes=True,
+            length_multiplier=10000
         )
         return self.get_data_loader(train_split)

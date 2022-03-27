@@ -37,9 +37,6 @@ class SlidingWindowDataset(VisionDataset):
     ):
         assert 0 < min_window_size <= max_window_size <= 1024
 
-        if not balance_classes:
-            raise NotImplementedError(f'Currently, only balance_classes=True is implemented.')
-
         self.mean = mean
         self.std = std
         self.min_window_size = min_window_size
@@ -104,7 +101,10 @@ class SlidingWindowDataset(VisionDataset):
         self.cached_img_id = None
 
     def __len__(self) -> int:
-        return int(len(self.cls2images) * self.length_multiplier)
+        if self.balance_classes:
+            return int(len(self.cls2images) * self.length_multiplier)
+        else:
+            return int(len(self.img_ids) * self.length_multiplier)
 
     def get_img_path(self, img_id: str) -> str:
         return os.path.join(self.img_dir, img_id + '.png')
@@ -126,51 +126,78 @@ class SlidingWindowDataset(VisionDataset):
 
         return images, annotations
 
+    def _load_img_and_ann(self, img_index: int, img_id: str):
+        if self.loaded_images is None:
+            if self.cached_img_id == img_id and self.cached_img is not None:
+                img = self.cached_img[0]
+                ann = self.cached_img[1]
+            else:
+                self.cached_img, self.cached_img_id = None, None
+                img_path = os.path.join(self.img_dir, img_id + '.png')
+                ann_path = os.path.join(self.annotations_dir, img_id + '.npy')
+
+                with Image.open(img_path) as img:
+                    img = img.convert('RGB')
+
+                ann = np.load(ann_path)
+                if self.transpose_ann:
+                    ann = ann.transpose()
+
+                self.cached_img = img, ann
+                self.cached_img_id = img_id
+        else:
+            img = self.loaded_images[img_index]
+            ann = self.loaded_annotations[img_index]
+
+        return img, ann
+
+    def _get_item_by_class(self, index: int):
+        target = int(index / self.length_multiplier)
+        target = self.class_nums[target]
+
+        img_id = np.random.choice(self.cls2images[target])
+        img_index = self.img_id2idx[img_id]
+
+        img, ann = self._load_img_and_ann(img_index, img_id)
+
+        cls_idx = np.argwhere(ann == target)
+        pixel_i = np.random.randint(0, cls_idx.shape[0])
+
+        # image has additional margin, so we add it to get the central pixel location in the image
+        window_center1 = cls_idx[pixel_i, 0]
+        window_center2 = cls_idx[pixel_i, 1]
+
+        return img, window_center1, window_center2, target
+
+    def _get_item_by_image(self, index: int):
+        img_index = int(index / self.length_multiplier)
+        img_id = self.img_ids[img_index]
+
+        img, ann = self._load_img_and_ann(img_index, img_id)
+
+        window_center1 = np.random.randint(0, ann.shape[0])
+        window_center2 = np.random.randint(0, ann.shape[1])
+
+        target = ann[window_center1, window_center2]
+
+        return img, window_center1, window_center2, target
+
     def __getitem__(self, index: int) -> Any:
         try:
-            target = int(index / self.length_multiplier)
-            target = self.class_nums[target]
-
-            img_id = np.random.choice(self.cls2images[target])
-            img_index = self.img_id2idx[img_id]
-
-            if self.loaded_images is None:
-                if self.cached_img_id == img_id and self.cached_img is not None:
-                    img = self.cached_img[0]
-                    ann = self.cached_img[1]
-                else:
-                    self.cached_img, self.cached_img_id = None, None
-                    img_path = os.path.join(self.img_dir, img_id + '.png')
-                    ann_path = os.path.join(self.annotations_dir, img_id + '.npy')
-
-                    with Image.open(img_path) as img:
-                        img = img.convert('RGB')
-
-                    ann = np.load(ann_path)
-                    if self.transpose_ann:
-                        ann = ann.transpose()
-
-                    self.cached_img = img, ann
-                    self.cached_img_id = img_id
+            if self.balance_classes:
+                img, window_center1, window_center2, target = self._get_item_by_class(index)
             else:
-                img = self.loaded_images[img_index]
-                ann = self.loaded_annotations[img_index]
+                img, window_center1, window_center2, target = self._get_item_by_imamge(index)
 
-            cls_idx = np.argwhere(ann == target)
-            pixel_i = np.random.randint(0, cls_idx.shape[0])
+            window_size = np.random.randint(self.min_window_size, self.max_window_size + 1)
+            margin_size = int(window_size / 2)
 
             # image has additional margin, so we add it to get the central pixel location in the image
-            window_center1 = cls_idx[pixel_i, 0] + self.image_margin_size
-            window_center2 = cls_idx[pixel_i, 1] + self.image_margin_size
-
-            window_size = np.random.randint(self.min_window_size, self.max_window_size+1)
-            margin_size = int(window_size/2)
-
             img = img.crop((
-                window_center1 - margin_size,
-                window_center2 - margin_size,
-                window_center1 + margin_size,
-                window_center2 + margin_size
+                window_center1 - margin_size + self.image_margin_size,
+                window_center2 - margin_size + self.image_margin_size,
+                window_center1 + margin_size + self.image_margin_size,
+                window_center2 + margin_size + self.image_margin_size
             ))
 
             if self.transform is not None:

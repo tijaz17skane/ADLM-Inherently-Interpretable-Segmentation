@@ -1,0 +1,6 @@
+# training Cityscapes model - not balancing classes
+
+include 'segmentation/configs/sun.gin'
+
+SlidingWindowDataset.balance_classes = False
+SlidingWindowDataset.length_multiplier = 35
