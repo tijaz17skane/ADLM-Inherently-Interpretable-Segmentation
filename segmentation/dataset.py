@@ -178,7 +178,7 @@ class SlidingWindowDataset(VisionDataset):
         window_center1 = np.random.randint(0, ann.shape[0])
         window_center2 = np.random.randint(0, ann.shape[1])
 
-        target = ann[window_center1, window_center2]
+        target = int(ann[window_center1, window_center2])
 
         return img, window_center1, window_center2, target
 
@@ -187,7 +187,7 @@ class SlidingWindowDataset(VisionDataset):
             if self.balance_classes:
                 img, window_center1, window_center2, target = self._get_item_by_class(index)
             else:
-                img, window_center1, window_center2, target = self._get_item_by_imamge(index)
+                img, window_center1, window_center2, target = self._get_item_by_image(index)
 
             window_size = np.random.randint(self.min_window_size, self.max_window_size + 1)
             margin_size = int(window_size / 2)
