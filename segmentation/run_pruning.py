@@ -42,10 +42,6 @@ def run_pruning(experiment_name: str, k: int = 6, prune_threshold: int = 3, opti
     def preprocess_push_input(x):
         return preprocess(x, mean=train_push_loader.dataset.mean, std=train_push_loader.dataset.std)
 
-    # TODO - run on more data
-    test_loader.dataset.length_multiplier = 1
-    train_push_loader.dataset.length_multiplier = 10
-
     log('test set size: {0}'.format(len(test_loader.dataset)))
     log('push set size: {0}'.format(len(train_push_loader.dataset)))
 
