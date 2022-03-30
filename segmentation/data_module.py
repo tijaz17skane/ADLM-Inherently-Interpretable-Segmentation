@@ -11,6 +11,10 @@ from torch.utils.data import DataLoader
 from segmentation.dataset import SlidingWindowDataset
 from settings import data_path
 
+import torch.multiprocessing
+
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 DataLoader = gin.external_configurable(DataLoader)
 
 
@@ -70,6 +74,6 @@ class SlidingWindowDataModule(LightningDataModule):
             min_window_size=224,
             max_window_size=224,
             balance_classes=True,
-            length_multiplier=10000
+            length_multiplier=5000
         )
         return self.get_data_loader(train_split)
