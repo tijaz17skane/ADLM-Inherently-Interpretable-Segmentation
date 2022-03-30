@@ -140,7 +140,7 @@ def train(
             neptune_logger = NeptuneLogger(
                 project="mikolajsacha/protobased-research",
                 tags=[config_path, 'protopnet', 'pruned'],
-                name=f'{experiment_name}_{pruned}'
+                name=f'{experiment_name}_pruned' if pruned else experiment_name
             )
             loggers.append(neptune_logger)
 

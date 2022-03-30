@@ -180,7 +180,6 @@ class SlidingWindowModule(LightningModule):
         metrics['cluster_cost'] += cluster_cost.item()
 
         if self.class_specific:
-            print(cross_entropy.item(), cluster_cost.item(), separation_cost.item(), l1.item())
             loss = (self.loss_weight_crs_ent * cross_entropy
                     + self.loss_weight_clst * cluster_cost
                     + self.loss_weight_sep * separation_cost
