@@ -136,13 +136,21 @@ class SlidingWindowModule(LightningModule):
                 dim=-1,
                 index=target
             )).to(self.device)
+
             inverted_distances, _ = torch.max((max_dist - min_distances) * prototypes_of_correct_class, dim=1)
+
+            # ignore 'void' class (0) in calculating cluster loss
+            inverted_distances[target == 0] = max_dist
             cluster_cost = torch.mean(max_dist - inverted_distances)
 
             # calculate separation cost
             prototypes_of_wrong_class = 1 - prototypes_of_correct_class
             inverted_distances_to_nontarget_prototypes, _ = \
                 torch.max((max_dist - min_distances) * prototypes_of_wrong_class, dim=1)
+
+            # ignore separation loss for 'void' class
+            # (we do not care if prototypes are "similar" to void class - we do not use prototypes for it)
+            inverted_distances_to_nontarget_prototypes[target == 0] = max_dist
             separation_cost = torch.mean(max_dist - inverted_distances_to_nontarget_prototypes)
 
             # calculate avg cluster cost
@@ -172,6 +180,7 @@ class SlidingWindowModule(LightningModule):
         metrics['cluster_cost'] += cluster_cost.item()
 
         if self.class_specific:
+            print(cross_entropy.item(), cluster_cost.item(), separation_cost.item(), l1.item())
             loss = (self.loss_weight_crs_ent * cross_entropy
                     + self.loss_weight_clst * cluster_cost
                     + self.loss_weight_sep * separation_cost
