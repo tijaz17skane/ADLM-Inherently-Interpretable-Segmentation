@@ -87,7 +87,7 @@ def train(
 
         log('MAIN TRAINING')
         callbacks = [
-            EarlyStopping(monitor='val/accuracy', patience=early_stopping_patience_main, mode='max')
+            EarlyStopping(monitor='val/loss', patience=early_stopping_patience_main, mode='min')
         ]
 
         module = SlidingWindowModule(

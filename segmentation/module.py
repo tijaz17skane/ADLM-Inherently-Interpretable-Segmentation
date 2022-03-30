@@ -106,7 +106,7 @@ class SlidingWindowModule(LightningModule):
         # we use optimizers manually
         self.automatic_optimization = False
 
-        self.best_acc = 0.0
+        self.best_loss = 1e6
 
     def forward(self, x):
         return self.ppnet(x)
@@ -241,11 +241,12 @@ class SlidingWindowModule(LightningModule):
 
     def on_validation_epoch_end(self):
         val_acc = self.metrics['val']['n_correct'] / self.metrics['val']['n_examples']
+        val_loss = self.metrics['val']['loss']
 
         if self.last_layer_only:
             self.log('training_stage', 2.0)
             stage_key = 'push'
-            self.lr_scheduler.step(val_acc)
+            self.lr_scheduler.step(val_loss)
         else:
             if self.current_epoch < self.num_warm_epochs:
                 # noinspection PyUnresolvedReferences
@@ -255,11 +256,11 @@ class SlidingWindowModule(LightningModule):
                 # noinspection PyUnresolvedReferences
                 self.log('training_stage', 1.0)
                 stage_key = 'nopush'
-                self.lr_scheduler.step(val_acc)
+                self.lr_scheduler.step(val_loss)
 
-        if val_acc > self.best_acc:
-            log(f'Saving best model, accuracy: ' + str(val_acc))
-            self.best_acc = val_acc
+        if val_loss < self.best_loss:
+            log(f'Saving best model, accuracy: ' + str(val_acc) + ', loss: ' + str(val_loss))
+            self.best_loss = val_loss
             save_model_w_condition(
                 model=self.ppnet,
                 model_dir=self.checkpoints_dir,

@@ -34,7 +34,7 @@ Trainer.max_epochs = 1000
 SlidingWindowModule.num_warm_epochs = 20
 SlidingWindowModule.loss_weight_crs_ent = 1.0
 SlidingWindowModule.loss_weight_clst = 0.8
-SlidingWindowModule.loss_weight_sep = -0.4
+SlidingWindowModule.loss_weight_sep = -0.2
 SlidingWindowModule.loss_weight_l1 = 1e-4
 SlidingWindowModule.joint_optimizer_lr_features = 2e-5
 SlidingWindowModule.joint_optimizer_lr_add_on_layers = 1e-3
@@ -46,9 +46,9 @@ SlidingWindowModule.warm_optimizer_weight_decay = 1e-4
 SlidingWindowModule.last_layer_optimizer_lr = 2e-5
 SlidingWindowModule.warmup_batches = 1000
 
-ReduceLROnPlateau.mode = 'max'
+ReduceLROnPlateau.mode = 'min
 ReduceLROnPlateau.factor = 0.5
-ReduceLROnPlateau.patience = 8
+ReduceLROnPlateau.patience = 4
 ReduceLROnPlateau.min_lr = 1e-7
 
 PPNet.void_negative_weight = -0.5
