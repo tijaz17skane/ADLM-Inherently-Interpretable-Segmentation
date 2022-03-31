@@ -12,7 +12,6 @@ import os
 import gin
 
 from settings import data_path, log
-from PIL import Image
 
 import numpy as np
 
@@ -57,12 +56,10 @@ class SlidingWindowDataset(VisionDataset):
         if push_prototypes:
             transform = transforms.Compose([
                 transforms.Resize((self.model_image_size, self.model_image_size)),
-                transforms.ToTensor()
             ])
         elif self.is_eval:
             transform = transforms.Compose([
                 transforms.Resize((self.model_image_size, self.model_image_size)),
-                transforms.ToTensor(),
                 transforms.Normalize(mean, std)
             ])
         else:
@@ -71,7 +68,6 @@ class SlidingWindowDataset(VisionDataset):
                 transforms.RandomHorizontalFlip(0.5),
                 transforms.RandomRotation(15),
                 transforms.Resize((self.model_image_size, self.model_image_size)),
-                transforms.ToTensor(),
                 transforms.Normalize(mean, std)
             ])
 
@@ -119,12 +115,14 @@ class SlidingWindowDataset(VisionDataset):
         annotations = []
 
         for img_id in self.img_ids:
-            img_path = os.path.join(self.img_dir, img_id + '.png')
+            img_path = os.path.join(self.img_dir, img_id + '.npy')
             ann_path = os.path.join(self.annotations_dir, img_id + '.npy')
 
-            with Image.open(img_path) as img:
-                images.append(img.convert('RGB'))
+            img = np.load(img_path)
             ann = np.load(ann_path)
+
+            images.append(img)
+
             if self.transpose_ann:
                 ann = ann.transpose()
             annotations.append(ann)
@@ -138,13 +136,12 @@ class SlidingWindowDataset(VisionDataset):
                 ann = self.cached_img[1]
             else:
                 self.cached_img, self.cached_img_id = None, None
-                img_path = os.path.join(self.img_dir, img_id + '.png')
+                img_path = os.path.join(self.img_dir, img_id + '.npy')
                 ann_path = os.path.join(self.annotations_dir, img_id + '.npy')
 
-                with Image.open(img_path) as img:
-                    img = img.convert('RGB')
-
+                img = np.load(img_path)
                 ann = np.load(ann_path)
+
                 if self.transpose_ann:
                     ann = ann.transpose()
 
@@ -198,12 +195,14 @@ class SlidingWindowDataset(VisionDataset):
             margin_size = int(window_size / 2)
 
             # image has additional margin, so we add it to get the central pixel location in the image
-            img = img.crop((
-                window_center1 - margin_size + self.image_margin_size,
-                window_center2 - margin_size + self.image_margin_size,
-                window_center1 + margin_size + self.image_margin_size,
-                window_center2 + margin_size + self.image_margin_size
-            ))
+            img = img[
+                window_center2 - margin_size + self.image_margin_size:
+                window_center2 + margin_size + self.image_margin_size,
+                window_center1 - margin_size + self.image_margin_size:
+                window_center1 + margin_size + self.image_margin_size
+            ]
+
+            img = torch.tensor(img).permute(2, 1, 0) / 256
 
             if self.transform is not None:
                 img = self.transform(img)

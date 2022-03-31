@@ -59,7 +59,7 @@ class SlidingWindowDataModule(LightningDataModule):
 
     def test_dataloader(self):
         test_split = SlidingWindowDataset(
-            split_key='test',
+            split_key='val',  # We do not have test set for cityscapes
             is_eval=True,
             model_image_size=self.model_image_size
         )

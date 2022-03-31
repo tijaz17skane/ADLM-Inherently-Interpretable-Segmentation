@@ -46,7 +46,7 @@ SlidingWindowModule.warm_optimizer_weight_decay = 1e-4
 SlidingWindowModule.last_layer_optimizer_lr = 2e-5
 SlidingWindowModule.warmup_batches = 1000
 
-ReduceLROnPlateau.mode = 'min
+ReduceLROnPlateau.mode = 'min'
 ReduceLROnPlateau.factor = 0.5
 ReduceLROnPlateau.patience = 4
 ReduceLROnPlateau.min_lr = 1e-7

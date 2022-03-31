@@ -20,7 +20,7 @@ def convert_images_to_numpy(margin_size: int = 512):
                 with Image.open(img_path) as img:
                     img = img.convert('RGB')
                 pix = np.array(img).astype(np.uint8)
-                np.save(os.path.join(img_dir, filename.split('.')[0]), pix)
+                np.save(os.path.join(img_dir, '.'.join(filename.split('.')[:-1])), pix)
 
 
 if __name__ == '__main__':
