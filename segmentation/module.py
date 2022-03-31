@@ -241,7 +241,7 @@ class SlidingWindowModule(LightningModule):
 
     def on_validation_epoch_end(self):
         val_acc = self.metrics['val']['n_correct'] / self.metrics['val']['n_examples']
-        val_loss = self.metrics['val']['loss']
+        val_loss = self.metrics['val']['loss'] / self.metrics['val']['n_batches']
 
         if self.last_layer_only:
             self.log('training_stage', 2.0)
