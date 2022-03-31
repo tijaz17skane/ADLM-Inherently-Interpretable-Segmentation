@@ -27,14 +27,14 @@ SlidingWindowDataset.transpose_ann = False
 SlidingWindowDataset.balance_classes = True
 SlidingWindowDataset.image_margin_size = 112
 
-SlidingWindowDataModule.dataloader_n_jobs = 4
+SlidingWindowDataModule.dataloader_n_jobs = 16
 DataLoader.batch_size = 64
 
 Trainer.max_epochs = 1000
 SlidingWindowModule.num_warm_epochs = 20
 SlidingWindowModule.loss_weight_crs_ent = 1.0
 SlidingWindowModule.loss_weight_clst = 0.8
-SlidingWindowModule.loss_weight_sep = -0.2
+SlidingWindowModule.loss_weight_sep = -0.08
 SlidingWindowModule.loss_weight_l1 = 1e-4
 SlidingWindowModule.joint_optimizer_lr_features = 2e-5
 SlidingWindowModule.joint_optimizer_lr_add_on_layers = 1e-3
