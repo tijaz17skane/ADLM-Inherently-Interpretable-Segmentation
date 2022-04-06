@@ -23,7 +23,7 @@ SlidingWindowDataset.max_window_size = 336
 SlidingWindowDataset.length_multiplier = 3500
 SlidingWindowDataset.mean = [0.28689554, 0.32513303, 0.28389177]
 SlidingWindowDataset.std = [0.18696375, 0.19017339, 0.18720214]
-SlidingWindowDataset.transpose_ann = True
+SlidingWindowDataset.transpose_ann = False
 SlidingWindowDataset.balance_classes = True
 SlidingWindowDataset.image_margin_size = 512
 

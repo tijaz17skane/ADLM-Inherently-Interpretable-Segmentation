@@ -11,9 +11,9 @@ from torch.utils.data import DataLoader
 from segmentation.dataset import SlidingWindowDataset
 from settings import data_path
 
-import torch.multiprocessing
-
-torch.multiprocessing.set_sharing_strategy('file_system')
+# Try this out in case of high RAM usage:
+# import torch.multiprocessing
+# torch.multiprocessing.set_sharing_strategy('file_system')
 
 DataLoader = gin.external_configurable(DataLoader)
 

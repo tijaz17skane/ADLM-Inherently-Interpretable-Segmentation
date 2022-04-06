@@ -148,9 +148,10 @@ class SlidingWindowModule(LightningModule):
             inverted_distances_to_nontarget_prototypes, _ = \
                 torch.max((max_dist - min_distances) * prototypes_of_wrong_class, dim=1)
 
-            # ignore separation loss for 'void' class
-            # (we do not care if prototypes are "similar" to void class - we do not use prototypes for it)
-            inverted_distances_to_nontarget_prototypes[target == 0] = max_dist
+            # optionally: ignore separation loss for 'void' class
+            # (we might not care if prototypes are "similar" to void class - we do not use prototypes for it)
+            # inverted_distances_to_nontarget_prototypes[target == 0] = max_dist
+
             separation_cost = torch.mean(max_dist - inverted_distances_to_nontarget_prototypes)
 
             # calculate avg cluster cost

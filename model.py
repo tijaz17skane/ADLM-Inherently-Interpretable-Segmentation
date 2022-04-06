@@ -47,9 +47,6 @@ class PPNet(nn.Module):
         self.epsilon = 1e-4
         self.void_negative_weight = void_negative_weight
 
-        if void_negative_weight != -0.5:
-            raise NotImplementedError('Not implemented yet')
-
         # prototype_activation_function could be 'log', 'linear',
         # or a generic function that converts distance to similarity score
         self.prototype_activation_function = prototype_activation_function
@@ -277,6 +274,9 @@ class PPNet(nn.Module):
         self.last_layer.weight.data.copy_(
             correct_class_connection * positive_one_weights_locations
             + incorrect_class_connection * negative_one_weights_locations)
+
+        # set weight of prototypes to void class
+        self.last_layer.weight.data[0] = self.void_negative_weight
 
     def _initialize_weights(self):
         for m in self.add_on_layers.modules():

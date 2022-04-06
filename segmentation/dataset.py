@@ -196,13 +196,13 @@ class SlidingWindowDataset(VisionDataset):
 
             # image has additional margin, so we add it to get the central pixel location in the image
             img = img[
-                window_center2 - margin_size + self.image_margin_size:
-                window_center2 + margin_size + self.image_margin_size,
-                window_center1 - margin_size + self.image_margin_size:
-                window_center1 + margin_size + self.image_margin_size
+              window_center1 - margin_size + self.image_margin_size:
+              window_center1 + margin_size + self.image_margin_size,
+              window_center2 - margin_size + self.image_margin_size:
+              window_center2 + margin_size + self.image_margin_size
             ]
 
-            img = torch.tensor(img).permute(2, 1, 0) / 256
+            img = torch.tensor(img).permute(2, 0, 1) / 256
 
             if self.transform is not None:
                 img = self.transform(img)

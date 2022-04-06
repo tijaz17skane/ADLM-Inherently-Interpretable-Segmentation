@@ -20,6 +20,7 @@ def convert_images_to_numpy(margin_size: int = 512):
                 with Image.open(img_path) as img:
                     img = img.convert('RGB')
                 pix = np.array(img).astype(np.uint8)
+                # pix.shape = (height, width, channels)
                 np.save(os.path.join(img_dir, '.'.join(filename.split('.')[:-1])), pix)
 
 

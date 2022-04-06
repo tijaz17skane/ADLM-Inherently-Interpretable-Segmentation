@@ -163,3 +163,6 @@ logs/
 
 pretrained_models/
 results/
+
+# notebooks (maybe upload later)
+*.ipynb
