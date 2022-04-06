@@ -106,7 +106,7 @@ class SlidingWindowModule(LightningModule):
         # we use optimizers manually
         self.automatic_optimization = False
 
-        self.best_loss = 1e6
+        self.best_acc = 0.0
 
     def forward(self, x):
         return self.ppnet(x)
@@ -259,9 +259,9 @@ class SlidingWindowModule(LightningModule):
                 stage_key = 'nopush'
                 self.lr_scheduler.step(val_loss)
 
-        if val_loss < self.best_loss:
+        if val_acc > self.best_acc:
             log(f'Saving best model, accuracy: ' + str(val_acc) + ', loss: ' + str(val_loss))
-            self.best_loss = val_loss
+            self.best_acc = val_acc
             save_model_w_condition(
                 model=self.ppnet,
                 model_dir=self.checkpoints_dir,

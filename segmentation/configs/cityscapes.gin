@@ -13,8 +13,8 @@ construct_PPNet.add_on_layers_type = 'bottleneck'
 
 train.model_image_size = 224
 train.random_seed = 20220227
-train.early_stopping_patience_main = 16
-train.early_stopping_patience_last_layer = 16
+train.early_stopping_patience_main = 20
+train.early_stopping_patience_last_layer = 20
 train.start_checkpoint = ''
 
 SlidingWindowModule.class_specific = True
@@ -31,7 +31,7 @@ SlidingWindowDataModule.dataloader_n_jobs = 16
 DataLoader.batch_size = 64
 
 Trainer.max_epochs = 1000
-SlidingWindowModule.num_warm_epochs = 20
+SlidingWindowModule.num_warm_epochs = 5
 SlidingWindowModule.loss_weight_crs_ent = 1.0
 SlidingWindowModule.loss_weight_clst = 0.8
 SlidingWindowModule.loss_weight_sep = -0.08
@@ -46,9 +46,9 @@ SlidingWindowModule.warm_optimizer_weight_decay = 1e-4
 SlidingWindowModule.last_layer_optimizer_lr = 2e-5
 SlidingWindowModule.warmup_batches = 1000
 
-ReduceLROnPlateau.mode = 'min'
+ReduceLROnPlateau.mode = 'max'
 ReduceLROnPlateau.factor = 0.5
-ReduceLROnPlateau.patience = 4
+ReduceLROnPlateau.patience = 8
 ReduceLROnPlateau.min_lr = 1e-7
 
 PPNet.void_negative_weight = -0.5
