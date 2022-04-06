@@ -247,7 +247,7 @@ class SlidingWindowModule(LightningModule):
         if self.last_layer_only:
             self.log('training_stage', 2.0)
             stage_key = 'push'
-            self.lr_scheduler.step(val_loss)
+            self.lr_scheduler.step(val_acc)
         else:
             if self.current_epoch < self.num_warm_epochs:
                 # noinspection PyUnresolvedReferences
@@ -257,7 +257,7 @@ class SlidingWindowModule(LightningModule):
                 # noinspection PyUnresolvedReferences
                 self.log('training_stage', 1.0)
                 stage_key = 'nopush'
-                self.lr_scheduler.step(val_loss)
+                self.lr_scheduler.step(val_acc)
 
         if val_acc > self.best_acc:
             log(f'Saving best model, accuracy: ' + str(val_acc) + ', loss: ' + str(val_loss))
