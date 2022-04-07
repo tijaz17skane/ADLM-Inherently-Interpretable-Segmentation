@@ -2,7 +2,7 @@
 Pytorch Lightning Module for training prototype segmentation model on Cityscapes and SUN datasets
 """
 import os
-from typing import Dict
+from typing import Dict, Optional
 
 import gin
 import torch
@@ -67,7 +67,8 @@ class SlidingWindowModule(LightningModule):
             warm_optimizer_lr_prototype_vectors: float = gin.REQUIRED,
             warm_optimizer_weight_decay: float = gin.REQUIRED,
             last_layer_optimizer_lr: float = gin.REQUIRED,
-            warmup_batches: int = gin.REQUIRED
+            warmup_batches: int = gin.REQUIRED,
+            gradient_clipping: Optional[float] = gin.REQUIRED
     ):
         super().__init__()
         self.model_dir = model_dir
@@ -91,6 +92,7 @@ class SlidingWindowModule(LightningModule):
         self.warm_optimizer_weight_decay = warm_optimizer_weight_decay
         self.last_layer_optimizer_lr = last_layer_optimizer_lr
         self.warmup_batches = warmup_batches
+        self.gradient_clipping = gradient_clipping
 
         os.makedirs(self.prototypes_dir, exist_ok=True)
         os.makedirs(self.checkpoints_dir, exist_ok=True)
@@ -207,6 +209,10 @@ class SlidingWindowModule(LightningModule):
 
             optimizer.zero_grad()
             self.manual_backward(loss)
+
+            if self.gradient_clipping is not None:
+                torch.nn.utils.clip_grad_norm_(self.ppnet.parameters(), self.gradient_clipping)
+
             optimizer.step()
             self.log('train_loss_step', loss_value, on_step=True, prog_bar=True)
 

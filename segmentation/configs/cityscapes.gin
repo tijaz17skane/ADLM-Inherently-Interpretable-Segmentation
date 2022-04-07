@@ -45,6 +45,7 @@ SlidingWindowModule.warm_optimizer_lr_prototype_vectors = 5e-4
 SlidingWindowModule.warm_optimizer_weight_decay = 5e-5
 SlidingWindowModule.last_layer_optimizer_lr = 1e-5
 SlidingWindowModule.warmup_batches = 1000
+SlidingWindowModule.gradient_clipping = 10
 
 ReduceLROnPlateau.mode = 'max'
 ReduceLROnPlateau.factor = 0.5
