@@ -9,7 +9,7 @@ import prune
 import save
 import train_and_test as tnt
 from preprocess import preprocess
-from segmentation.data_module import PatchClassificationDataModule
+from sliding_window.data_module import SlidingWindowDataModule
 from log import create_logger
 
 
@@ -32,7 +32,7 @@ def run_pruning(experiment_name: str, k: int = 6, prune_threshold: int = 3, opti
 
     # load the data
     # TODO use configurable value for model_image_size here
-    data_module = PatchClassificationDataModule(model_image_size=224)
+    data_module = SlidingWindowDataModule(model_image_size=224)
 
     test_loader = data_module.val_dataloader()
 

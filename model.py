@@ -1,3 +1,5 @@
+from typing import Optional
+
 import gin
 import torch
 import torch.nn as nn
@@ -31,13 +33,15 @@ base_architecture_to_features = {'resnet18': resnet18_features,
                                  'vgg19_bn': vgg19_bn_features}
 
 
-@gin.configurable(allowlist=['void_negative_weight'])
+@gin.configurable(allowlist=['void_negative_weight', 'bottleneck_stride', 'patch_classification'])
 class PPNet(nn.Module):
     def __init__(self, features, img_size, prototype_shape,
                  proto_layer_rf_info, num_classes, init_weights=True,
                  prototype_activation_function='log',
                  add_on_layers_type='bottleneck',
-                 void_negative_weight: float = gin.REQUIRED):
+                 void_negative_weight: float = gin.REQUIRED,
+                 bottleneck_stride: Optional[int] = None,
+                 patch_classification: bool = False):
 
         super(PPNet, self).__init__()
         self.img_size = img_size
@@ -46,6 +50,8 @@ class PPNet(nn.Module):
         self.num_classes = num_classes
         self.epsilon = 1e-4
         self.void_negative_weight = void_negative_weight
+        self.bottleneck_stride = bottleneck_stride
+        self.patch_classification = patch_classification
 
         # prototype_activation_function could be 'log', 'linear',
         # or a generic function that converts distance to similarity score
@@ -81,8 +87,16 @@ class PPNet(nn.Module):
         else:
             raise Exception('other base base_architecture NOT implemented')
 
-        if add_on_layers_type == 'bottleneck':
-            add_on_layers = []
+        add_on_layers = []
+
+        if add_on_layers_type == 'bottleneck_pool':
+            # Add conv net with stride to get the target number of patches (16x8)
+            add_on_layers.append(nn.Conv2d(in_channels=first_add_on_layer_in_channels,
+                                           out_channels=first_add_on_layer_in_channels,
+                                           kernel_size=3, padding=1, stride=self.bottleneck_stride))
+            add_on_layers.append(nn.ReLU())
+
+        if add_on_layers_type.startswith('bottleneck'):
             current_in_channels = first_add_on_layer_in_channels
             while (current_in_channels > self.prototype_shape[1]) or (len(add_on_layers) == 0):
                 current_out_channels = max(self.prototype_shape[1], (current_in_channels // 2))
@@ -164,6 +178,10 @@ class PPNet(nn.Module):
         x2 = x ** 2
         x2_patch_sum = F.conv2d(input=x2, weight=self.ones)
 
+        # TODO
+        vec = self.prototype_vectors[:, :, 0, 0]
+        d = torch.cdist(vec, vec).flatten()
+
         p2 = self.prototype_vectors ** 2
         p2 = torch.sum(p2, dim=(1, 2, 3))
         # p2 is a vector of shape (num_prototypes,)
@@ -182,6 +200,8 @@ class PPNet(nn.Module):
         x is the raw input
         '''
         conv_features = self.conv_features(x)
+        feat_flat = conv_features[0].reshape(512, -1).T
+        feat_dist = torch.cdist(feat_flat, feat_flat)
         distances = self._l2_convolution(conv_features)
         return distances
 
@@ -199,14 +219,33 @@ class PPNet(nn.Module):
         we cannot refactor the lines below for similarity scores
         because we need to return min_distances
         '''
-        # global min pooling
-        min_distances = -F.max_pool2d(-distances,
-                                      kernel_size=(distances.size()[2],
-                                                   distances.size()[3]))
-        min_distances = min_distances.view(-1, self.num_prototypes)
-        prototype_activations = self.distance_2_similarity(min_distances)
-        logits = self.last_layer(prototype_activations)
-        return logits, min_distances
+        # distances.shape = (batch_size, num_prototypes, n_patches_cols, n_patches_rows)
+
+        if self.patch_classification:
+            # flatten to get predictions per patch
+            batch_size, num_prototypes, n_patches_cols, n_patches_rows = distances.shape
+
+            # shape: (batch_size, n_patches_cols, n_patches_rows, num_prototypes)
+            dist_view = distances.permute(0, 2, 3, 1)
+            dist_view = dist_view.view(-1, num_prototypes)
+            prototype_activations = self.distance_2_similarity(dist_view)
+
+            logits = self.last_layer(prototype_activations)
+
+            # shape: (batch_size, n_patches_cols, n_patches_rows, num_classes)
+            logits = logits.reshape(batch_size, n_patches_cols, n_patches_rows, -1)
+
+            return logits, distances
+        else:
+            # global min pooling
+            min_distances = -F.max_pool2d(-distances,
+                                          kernel_size=(distances.size()[2],
+                                                       distances.size()[3]))
+            # min_distances.shape = (batch_size, num_prototypes)
+            min_distances = min_distances.view(-1, self.num_prototypes)
+            prototype_activations = self.distance_2_similarity(min_distances)
+            logits = self.last_layer(prototype_activations)
+            return logits, min_distances
 
     def push_forward(self, x):
         '''this method is needed for the pushing operation'''

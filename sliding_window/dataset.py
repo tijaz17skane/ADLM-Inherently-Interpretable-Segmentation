@@ -1,5 +1,5 @@
 """
-Dataset for training prototype patch classification model on Cityscapes and SUN datasets
+Dataset for training prototype segmentation model on Cityscapes and SUN datasets
 """
 import json
 from typing import Any, List
@@ -16,8 +16,9 @@ from settings import data_path, log
 import numpy as np
 
 
-@gin.configurable(allowlist=['mean', 'std', 'transpose_ann', 'image_margin_size', 'patch_size', 'num_classes'])
-class PatchClassificationDataset(VisionDataset):
+@gin.configurable(allowlist=['mean', 'std', 'min_window_size', 'max_window_size', 'length_multiplier',
+                             'transpose_ann', 'balance_classes', 'image_margin_size'])
+class SlidingWindowDataset(VisionDataset):
     def __init__(
             self,
             split_key: str,
@@ -26,39 +27,51 @@ class PatchClassificationDataset(VisionDataset):
             push_prototypes: bool = False,
             mean: List[float] = gin.REQUIRED,
             std: List[float] = gin.REQUIRED,
+            min_window_size: int = gin.REQUIRED,
+            max_window_size: int = gin.REQUIRED,
+            length_multiplier: int = gin.REQUIRED,
             transpose_ann: bool = gin.REQUIRED,
-            image_margin_size: int = gin.REQUIRED,
-            patch_size: float = gin.REQUIRED,
-            num_classes: float = gin.REQUIRED
+            balance_classes: bool = gin.REQUIRED,
+            image_margin_size: int = 512
     ):
+        assert 0 < min_window_size <= max_window_size <= 1024
+
         self.mean = mean
         self.std = std
+        self.min_window_size = min_window_size
+        self.max_window_size = max_window_size
         self.model_image_size = model_image_size
         self.is_eval = is_eval
         self.split_key = split_key
         self.annotations_dir = os.path.join(data_path, 'annotations', split_key)
         self.push_prototypes = push_prototypes
+        self.length_multiplier = length_multiplier
         self.transpose_ann = transpose_ann
+        self.balance_classes = balance_classes
         self.image_margin_size = image_margin_size
-        self.patch_size = patch_size
-        self.num_classes = num_classes
 
         # we generated cityscapes images with max margin earlier
         self.img_dir = os.path.join(data_path, f'img_with_margin_{self.image_margin_size}/{split_key}')
 
         if push_prototypes:
-            transform = None
+            transform = transforms.Compose([
+                transforms.Resize((self.model_image_size, self.model_image_size)),
+            ])
         elif self.is_eval:
             transform = transforms.Compose([
+                transforms.Resize((self.model_image_size, self.model_image_size)),
                 transforms.Normalize(mean, std)
             ])
         else:
             transform = transforms.Compose([
-                # transforms.ColorJitter(0.3, 0.3, 0.3, 0.1),  # TODO
+                transforms.ColorJitter(0.3, 0.3, 0.3, 0.1),
+                transforms.RandomHorizontalFlip(0.5),
+                transforms.RandomRotation(15),
+                transforms.Resize((self.model_image_size, self.model_image_size)),
                 transforms.Normalize(mean, std)
             ])
 
-        super(PatchClassificationDataset, self).__init__(
+        super(SlidingWindowDataset, self).__init__(
             root=self.img_dir,
             transform=transform
         )
@@ -67,6 +80,15 @@ class PatchClassificationDataset(VisionDataset):
             self.img_ids = json.load(fp)[split_key]
 
         self.img_id2idx = {img_id: i for i, img_id in enumerate(self.img_ids)}
+
+        if self.balance_classes:
+            with open(os.path.join(data_path, 'class2images', split_key, 'cls2img.json'), 'r') as fp:
+                self.cls2images = json.load(fp)
+            self.cls2images = {int(k): v for k, v in self.cls2images.items()}
+            self.class_nums = list(sorted(self.cls2images.keys()))
+        else:
+            self.cls2images = None
+            self.class_nums = None
 
         if bool(int(os.environ['LOAD_IMAGES_RAM'])):
             log(f"Loading {len(self.img_ids)} samples from {split_key} set to memory...")
@@ -80,7 +102,10 @@ class PatchClassificationDataset(VisionDataset):
         self.cached_img_id = None
 
     def __len__(self) -> int:
-        return len(self.img_ids)
+        if self.balance_classes:
+            return int(len(self.cls2images) * self.length_multiplier)
+        else:
+            return int(len(self.img_ids) * self.length_multiplier)
 
     def get_img_path(self, img_id: str) -> str:
         return os.path.join(self.img_dir, img_id + '.png')
@@ -128,58 +153,58 @@ class PatchClassificationDataset(VisionDataset):
 
         return img, ann
 
+    def _get_item_by_class(self, index: int):
+        target = int(index / self.length_multiplier)
+        target = self.class_nums[target]
+
+        img_id = np.random.choice(self.cls2images[target])
+        img_index = self.img_id2idx[img_id]
+
+        img, ann = self._load_img_and_ann(img_index, img_id)
+
+        cls_idx = np.argwhere(ann == target)
+        pixel_i = np.random.randint(0, cls_idx.shape[0])
+
+        # image has additional margin, so we add it to get the central pixel location in the image
+        window_center1 = cls_idx[pixel_i, 0]
+        window_center2 = cls_idx[pixel_i, 1]
+
+        return img, window_center1, window_center2, target
+
+    def _get_item_by_image(self, index: int):
+        img_index = int(index / self.length_multiplier)
+        img_id = self.img_ids[img_index]
+
+        img, ann = self._load_img_and_ann(img_index, img_id)
+
+        window_center1 = np.random.randint(0, ann.shape[0])
+        window_center2 = np.random.randint(0, ann.shape[1])
+
+        target = int(ann[window_center1, window_center2])
+
+        return img, window_center1, window_center2, target
+
     def __getitem__(self, index: int) -> Any:
         try:
-            img_id = self.img_ids[index]
-            img, ann = self._load_img_and_ann(index, img_id)
-
-            full_ann = np.full((img.shape[0], img.shape[1]), fill_value=-1)
-            full_ann[self.image_margin_size:-self.image_margin_size,
-                     self.image_margin_size:-self.image_margin_size] = ann
-
-            if self.is_eval:
-                h_shift = 0
-                v_shift = 0
+            if self.balance_classes:
+                img, window_center1, window_center2, target = self._get_item_by_class(index)
             else:
-                # shift image randomly
-                h_shift = np.random.randint(-self.patch_size + 1, self.patch_size)
-                v_shift = np.random.randint(-self.patch_size + 1, self.patch_size)
+                img, window_center1, window_center2, target = self._get_item_by_image(index)
 
-                # TODO test
-                h_shift = 0
-                v_shift = 0
+            window_size = np.random.randint(self.min_window_size, self.max_window_size + 1)
+            margin_size = int(window_size / 2)
 
             # image has additional margin, so we add it to get the central pixel location in the image
-            img = img[self.image_margin_size + h_shift:-self.image_margin_size + h_shift,
-                      self.image_margin_size + v_shift:-self.image_margin_size + v_shift]
-            target = full_ann[self.image_margin_size + h_shift:-self.image_margin_size + h_shift,
-                              self.image_margin_size + v_shift: -self.image_margin_size + v_shift]
+            img = img[
+              window_center1 - margin_size + self.image_margin_size:
+              window_center1 + margin_size + self.image_margin_size,
+              window_center2 - margin_size + self.image_margin_size:
+              window_center2 + margin_size + self.image_margin_size
+            ]
 
             img = torch.tensor(img).permute(2, 0, 1) / 256
 
-            # Random horizontal flip
-            if not self.is_eval and np.random.random() > 0.5:
-                pass
-                # TODO test
-                # target = np.flip(target, axis=1)
-                # img = torch.flip(img, [2])
-                # TODO maybe add random rotation but it is a bit harder
-
-            # Get target as a distribution of classes per patch
-            n_target_rows, n_target_cols = int(img.shape[1] / self.patch_size), int(img.shape[2] / self.patch_size)
-
-            target_dist = np.full((n_target_rows, n_target_cols, self.num_classes), fill_value=0.0)
-
-            for i in range(n_target_rows):
-                for j in range(n_target_cols):
-                    patch_classes = target[i * self.patch_size:(i + 1) * self.patch_size,
-                                           j * self.patch_size:(j + 1) * self.patch_size]
-                    pixels_in_patch = patch_classes.size
-                    unique, counts = np.unique(patch_classes.flatten(), return_counts=True)
-                    for n, c in zip(unique, counts):
-                        target_dist[i, j, n] = c/pixels_in_patch
-
-            target = target_dist
+            # img shape: (c, h, w)
 
             if self.transform is not None:
                 img = self.transform(img)
@@ -188,12 +213,14 @@ class PatchClassificationDataset(VisionDataset):
 
             return img, target
         except Exception as e:
-            raise e
-            # TODO catch errors
+            log(f"EXCEPTION IN DATASET.__getitem__: {str(e)}")
+            img = torch.zeros((3, self.model_image_size, self.model_image_size), dtype=torch.float)
+            target = torch.tensor(0, dtype=torch.long)
+            return img, target
 
 
 if __name__ == '__main__':
-    dataset = PatchClassificationDataset(
+    dataset = SlidingWindowDataset(
         split_key='train',
         is_eval=True,
         min_window_size=224,

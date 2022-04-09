@@ -5,7 +5,6 @@ import os
 from typing import Dict, Optional
 
 import gin
-import numpy
 import torch
 from pytorch_lightning import LightningModule
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -27,11 +26,13 @@ def get_lr(optimizer):
 def reset_metrics() -> Dict:
     return {
         'n_examples': 0,
-        'n_correct_top1': 0,
+        'n_correct': 0,
         'n_batches': 0,
-        'n_patches': 0,
-        'kld_loss': 0,
-        'loss': 0
+        'cross_entropy': 0,
+        'cluster_cost': 0,
+        'loss': 0,
+        'separation_cost': 0,
+        'avg_separation_cost': 0
     }
 
 
@@ -45,15 +46,18 @@ def update_lr_warmup(optimizer, current_step, warmup_batches):
 
 # noinspection PyAbstractClass
 @gin.configurable(denylist=['model_dir', 'model_image_size', 'ppnet', 'last_layer_only'])
-class PatchClassificationModule(LightningModule):
+class SlidingWindowModule(LightningModule):
     def __init__(
             self,
             model_dir: str,
             model_image_size: int,
             ppnet: PPNet,
             last_layer_only: bool,
+            class_specific: bool = gin.REQUIRED,
             num_warm_epochs: int = gin.REQUIRED,
             loss_weight_crs_ent: float = gin.REQUIRED,
+            loss_weight_clst: float = gin.REQUIRED,
+            loss_weight_sep: float = gin.REQUIRED,
             loss_weight_l1: float = gin.REQUIRED,
             joint_optimizer_lr_features: float = gin.REQUIRED,
             joint_optimizer_lr_add_on_layers: float = gin.REQUIRED,
@@ -73,8 +77,11 @@ class PatchClassificationModule(LightningModule):
         self.model_image_size = model_image_size
         self.ppnet = ppnet
         self.last_layer_only = last_layer_only
+        self.class_specific = class_specific
         self.num_warm_epochs = num_warm_epochs
         self.loss_weight_crs_ent = loss_weight_crs_ent
+        self.loss_weight_clst = loss_weight_clst
+        self.loss_weight_sep = loss_weight_sep
         self.loss_weight_l1 = loss_weight_l1
         self.joint_optimizer_lr_features = joint_optimizer_lr_features
         self.joint_optimizer_lr_add_on_layers = joint_optimizer_lr_add_on_layers
@@ -101,8 +108,7 @@ class PatchClassificationModule(LightningModule):
         # we use optimizers manually
         self.automatic_optimization = False
 
-        self.best_loss = 10e6
-        self.loss = torch.nn.KLDivLoss(reduction='batchmean')
+        self.best_acc = 0.0
 
     def forward(self, x):
         return self.ppnet(x)
@@ -112,35 +118,79 @@ class PatchClassificationModule(LightningModule):
 
         image, target = batch
         image = image.to(self.device)
-        target = target.to(self.device).to(torch.float32)
+        target = target.to(self.device)
 
-        output, patch_distances = self.ppnet.forward(image)
+        output, min_distances = self.ppnet(image)
 
-        # treat each patch as a separate sample in calculating loss
-        # TODO: mask mirror (-1 target)
-        log_output_flat = torch.nn.functional.log_softmax(output.reshape(-1, output.shape[-1]))
-        target_flat = target.reshape(-1, target.shape[-1])
-        kld_loss = self.loss(log_output_flat, target_flat)
+        # noinspection PyUnresolvedReferences
+        cross_entropy = torch.nn.functional.cross_entropy(output, target)
+        separation_cost = 0
 
-        l1_mask = 1 - torch.t(self.ppnet.prototype_class_identity).to(self.device)
-        l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
+        if self.class_specific:
+            max_dist = (self.ppnet.prototype_shape[1]
+                        * self.ppnet.prototype_shape[2]
+                        * self.ppnet.prototype_shape[3])
 
-        metrics['n_examples'] += target.size(0)
+            # prototypes_of_correct_class is a tensor of shape batch_size * num_prototypes
+            # calculate cluster cost
+            prototypes_of_correct_class = torch.t(torch.index_select(
+                self.ppnet.prototype_class_identity.to(self.device),
+                dim=-1,
+                index=target
+            )).to(self.device)
+
+            inverted_distances, _ = torch.max((max_dist - min_distances) * prototypes_of_correct_class, dim=1)
+
+            # ignore 'void' class (0) in calculating cluster loss
+            inverted_distances[target == 0] = max_dist
+            cluster_cost = torch.mean(max_dist - inverted_distances)
+
+            # calculate separation cost
+            prototypes_of_wrong_class = 1 - prototypes_of_correct_class
+            inverted_distances_to_nontarget_prototypes, _ = \
+                torch.max((max_dist - min_distances) * prototypes_of_wrong_class, dim=1)
+
+            # optionally: ignore separation loss for 'void' class
+            # (we might not care if prototypes are "similar" to void class - we do not use prototypes for it)
+            # inverted_distances_to_nontarget_prototypes[target == 0] = max_dist
+
+            separation_cost = torch.mean(max_dist - inverted_distances_to_nontarget_prototypes)
+
+            # calculate avg cluster cost
+            avg_separation_cost = \
+                torch.sum(min_distances * prototypes_of_wrong_class, dim=1) / torch.sum(
+                    prototypes_of_wrong_class, dim=1)
+            avg_separation_cost = torch.mean(avg_separation_cost)
+
+            l1_mask = 1 - torch.t(self.ppnet.prototype_class_identity).to(self.device)
+            l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
+
+            metrics['separation_cost'] += separation_cost.item()
+            metrics['avg_separation_cost'] += avg_separation_cost.item()
+
+        else:
+            min_distance, _ = torch.min(min_distances, dim=1)
+            cluster_cost = torch.mean(min_distance)
+            l1 = self.ppnet.last_layer.weight.norm(p=1)
 
         # evaluation statistics
         _, predicted = torch.max(output.data, 1)
-
-        _, target_argmax = torch.max(target, dim=-1)
-        _, output_argmax = torch.max(output, dim=-1)
-
-        metrics['n_correct_top1'] += (output_argmax == target_argmax).sum().item()
+        metrics['n_examples'] += target.size(0)
+        metrics['n_correct'] += (predicted == target).sum().item()
 
         metrics['n_batches'] += 1
-        metrics['n_patches'] += output_argmax.numel()
-        metrics['kld_loss'] += kld_loss.item()
+        metrics['cross_entropy'] += cross_entropy.item()
+        metrics['cluster_cost'] += cluster_cost.item()
 
-        loss = self.loss_weight_crs_ent * kld_loss + self.loss_weight_l1 * l1
-
+        if self.class_specific:
+            loss = (self.loss_weight_crs_ent * cross_entropy
+                    + self.loss_weight_clst * cluster_cost
+                    + self.loss_weight_sep * separation_cost
+                    + self.loss_weight_l1 * l1)
+        else:
+            loss = (self.loss_weight_crs_ent * cross_entropy
+                    + self.loss_weight_clst * cluster_cost
+                    + self.loss_weight_sep * l1)
         loss_value = loss.item()
         metrics['loss'] += loss_value
 
@@ -197,13 +247,13 @@ class PatchClassificationModule(LightningModule):
             self.metrics[split_key] = reset_metrics()
 
     def on_validation_epoch_end(self):
-        val_top1 = self.metrics['val']['n_correct_top1'] / self.metrics['val']['n_patches']
-        val_loss = self.metrics['val']['kld_loss'] / self.metrics['val']['n_batches']
+        val_acc = self.metrics['val']['n_correct'] / self.metrics['val']['n_examples']
+        val_loss = self.metrics['val']['loss'] / self.metrics['val']['n_batches']
 
         if self.last_layer_only:
             self.log('training_stage', 2.0)
             stage_key = 'push'
-            self.lr_scheduler.step(val_loss)
+            self.lr_scheduler.step(val_acc)
         else:
             if self.current_epoch < self.num_warm_epochs:
                 # noinspection PyUnresolvedReferences
@@ -213,24 +263,16 @@ class PatchClassificationModule(LightningModule):
                 # noinspection PyUnresolvedReferences
                 self.log('training_stage', 1.0)
                 stage_key = 'nopush'
-                self.lr_scheduler.step(val_loss)
+                self.lr_scheduler.step(val_acc)
 
-        # TODO delete
-        if self.metrics['train']['n_batches'] > 0:
-            train_top1 = self.metrics['train']['n_correct_top1'] / self.metrics['train']['n_patches']
-            train_loss = self.metrics['train']['kld_loss'] / self.metrics['train']['n_batches']
-            log(f'TRAIN Top 1 accuracy: ' + str(train_top1) + ', KLD loss: ' + str(train_loss))
-        if self.metrics['val']['n_batches'] > 0:
-            log(f'VAL   Top 1 accuracy: ' + str(val_top1) + ', KLD loss: ' + str(val_loss))
-
-        if val_loss < self.best_loss:
-            log(f'Saving best model, top 1 accuracy: ' + str(val_top1) + ', KLD loss: ' + str(val_loss))
-            self.best_loss = val_loss
+        if val_acc > self.best_acc:
+            log(f'Saving best model, accuracy: ' + str(val_acc) + ', loss: ' + str(val_loss))
+            self.best_acc = val_acc
             save_model_w_condition(
                 model=self.ppnet,
                 model_dir=self.checkpoints_dir,
                 model_name=f'{stage_key}_best',
-                accu=val_top1,
+                accu=val_acc,
                 target_accu=0.0,
                 log=log
             )
@@ -238,7 +280,7 @@ class PatchClassificationModule(LightningModule):
             model=self.ppnet,
             model_dir=self.checkpoints_dir,
             model_name=f'{stage_key}_last',
-            accu=val_top1,
+            accu=val_acc,
             target_accu=0.0,
             log=log
         )
@@ -247,10 +289,10 @@ class PatchClassificationModule(LightningModule):
         metrics = self.metrics[split_key]
         n_batches = metrics['n_batches']
 
-        for key in ['loss', 'kld_loss']:
+        for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation_cost', 'avg_separation_cost']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
-        self.log(f'{split_key}/top1_accuracy', metrics['n_correct_top1'] / metrics['n_examples'])
+        self.log(f'{split_key}/accuracy', metrics['n_correct'] / metrics['n_examples'])
         self.log('l1', self.ppnet.last_layer.weight.norm(p=1).item())
 
         p = self.ppnet.prototype_vectors.view(self.ppnet.num_prototypes, -1).cpu()
@@ -306,7 +348,7 @@ class PatchClassificationModule(LightningModule):
                     {
                         'params': self.ppnet.prototype_vectors,
                         'lr': self.joint_optimizer_lr_prototype_vectors
-                    }
+                    },
                 ]
         main_optimizer = torch.optim.Adam(main_optimizer_specs)
         self.lr_scheduler = ReduceLROnPlateau(main_optimizer)

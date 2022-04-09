@@ -1,9 +1,9 @@
 """
-Training prototype segmentation model on Cityscapes or SUN dataset
+Training prototype sliding-window segmentation model on Cityscapes or SUN dataset
 
 Example run:
 
-python -m segmentation.train cityscapes 2022_03_26_cityscapes
+python -m sliding_window.train cityscapes 2022_03_26_cityscapes
 """
 import os
 import shutil
@@ -15,8 +15,8 @@ import gin
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.loggers import NeptuneLogger, TensorBoardLogger, CSVLogger
 
-from segmentation.data_module import PatchClassificationDataModule
-from segmentation.module import PatchClassificationModule
+from sliding_window.data_module import SlidingWindowDataModule
+from sliding_window.module import SlidingWindowModule
 from segmentation.config import get_operative_config_json
 from model import construct_PPNet
 from preprocess import preprocess
@@ -52,7 +52,7 @@ def train(
     else:
         ppnet = construct_PPNet(img_size=model_image_size)
 
-    data_module = PatchClassificationDataModule(
+    data_module = SlidingWindowDataModule(
         model_image_size=model_image_size,
     )
 
@@ -74,23 +74,23 @@ def train(
         if use_neptune:
             neptune_logger = NeptuneLogger(
                 project="mikolajsacha/protobased-research",
-                tags=[config_path, 'patch_classification', 'protopnet'],
+                tags=[config_path, 'protopnet'],
                 name=experiment_name
             )
             loggers.append(neptune_logger)
 
             neptune_run = neptune_logger.run
-            neptune_run['config_file'].upload(f'segmentation/configs/{config_path}.gin')
+            neptune_run['config_file'].upload(f'sliding_window/configs/{config_path}.gin')
             neptune_run['config'] = json_gin_config
 
-        shutil.copy(f'segmentation/configs/{config_path}.gin', os.path.join(results_dir, 'config.gin'))
+        shutil.copy(f'sliding_window/configs/{config_path}.gin', os.path.join(results_dir, 'config.gin'))
 
         log('MAIN TRAINING')
         callbacks = [
-            EarlyStopping(monitor='val/kld_loss', patience=early_stopping_patience_main, mode='min')
+            EarlyStopping(monitor='val/accuracy', patience=early_stopping_patience_main, mode='max')
         ]
 
-        module = PatchClassificationModule(
+        module = SlidingWindowModule(
             model_dir=results_dir,
             model_image_size=model_image_size,
             ppnet=ppnet,
@@ -98,7 +98,7 @@ def train(
         )
 
         trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
-                          enable_progress_bar=True)
+                          enable_progress_bar=False)
         trainer.fit(model=module, datamodule=data_module)
 
         best_checkpoint = os.path.join(results_dir, 'checkpoints', 'nopush_best.pth')
@@ -139,21 +139,21 @@ def train(
         if use_neptune:
             neptune_logger = NeptuneLogger(
                 project="mikolajsacha/protobased-research",
-                tags=[config_path, 'patch_classification', 'protopnet', 'pruned'],
+                tags=[config_path, 'protopnet', 'pruned'],
                 name=f'{experiment_name}_pruned' if pruned else experiment_name
             )
             loggers.append(neptune_logger)
 
             neptune_run = neptune_logger.run
-            neptune_run['config_file'].upload(f'segmentation/configs/{config_path}.gin')
+            neptune_run['config_file'].upload(f'sliding_window/configs/{config_path}.gin')
             neptune_run['config'] = json_gin_config
 
     log('LAST LAYER FINE-TUNING')
     callbacks = [
-        EarlyStopping(monitor='val/kld_loss', patience=early_stopping_patience_last_layer, mode='min')
+        EarlyStopping(monitor='val/accuracy', patience=early_stopping_patience_last_layer, mode='max')
     ]
 
-    module = PatchClassificationModule(
+    module = SlidingWindowModule(
         model_dir=os.path.join(results_dir, 'pruned') if pruned else results_dir,
         model_image_size=model_image_size,
         ppnet=ppnet,
@@ -166,7 +166,7 @@ def train(
         current_epoch = start_epoch
 
     trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
-                      enable_progress_bar=True)
+                      enable_progress_bar=False)
     if start_epoch != 0:
         trainer.fit_loop.current_epoch = start_epoch
     else:
@@ -180,7 +180,7 @@ def load_config_and_train(
         pruned: bool = False,
         start_epoch: int = 0
 ):
-    gin.parse_config_file(f'segmentation/configs/{config_path}.gin')
+    gin.parse_config_file(f'sliding_window/configs/{config_path}.gin')
     train(config_path, experiment_name, pruned=pruned, start_epoch=start_epoch)
 
 
