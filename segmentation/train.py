@@ -98,8 +98,10 @@ def train(
         )
 
         trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
-                          enable_progress_bar=True)
+                          enable_progress_bar=False)
         trainer.fit(model=module, datamodule=data_module)
+
+        # TODO check if pushing prototypes works
 
         best_checkpoint = os.path.join(results_dir, 'checkpoints', 'nopush_best.pth')
         log(f'Loading best model from {best_checkpoint}')
@@ -166,7 +168,7 @@ def train(
         current_epoch = start_epoch
 
     trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
-                      enable_progress_bar=True)
+                      enable_progress_bar=False)
     if start_epoch != 0:
         trainer.fit_loop.current_epoch = start_epoch
     else:

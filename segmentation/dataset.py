@@ -54,7 +54,7 @@ class PatchClassificationDataset(VisionDataset):
             ])
         else:
             transform = transforms.Compose([
-                # transforms.ColorJitter(0.3, 0.3, 0.3, 0.1),  # TODO
+                transforms.ColorJitter(0.3, 0.3, 0.3, 0.1),
                 transforms.Normalize(mean, std)
             ])
 
@@ -137,6 +137,41 @@ class PatchClassificationDataset(VisionDataset):
             full_ann[self.image_margin_size:-self.image_margin_size,
                      self.image_margin_size:-self.image_margin_size] = ann
 
+            # insert class for mirrored margin
+            full_ann[:self.image_margin_size, :] = np.flip(
+                full_ann[self.image_margin_size:2 * self.image_margin_size, :],
+                axis=0)
+            full_ann[-self.image_margin_size:, :] = np.flip(
+                full_ann[-2 * self.image_margin_size:-self.image_margin_size, :],
+                axis=0)
+
+            full_ann[:, :self.image_margin_size] = np.flip(
+                full_ann[:, self.image_margin_size:2 * self.image_margin_size],
+                axis=1)
+            full_ann[:, -self.image_margin_size:] = np.flip(
+                full_ann[:, -2 * self.image_margin_size:-self.image_margin_size],
+                axis=1)
+
+            full_ann[:self.image_margin_size, :self.image_margin_size] = np.flip(
+                full_ann[self.image_margin_size:2 * self.image_margin_size,
+                         self.image_margin_size:2 * self.image_margin_size],
+                axis=None)
+            full_ann[-self.image_margin_size:, -self.image_margin_size:] = np.flip(
+                full_ann[-2 * self.image_margin_size:-self.image_margin_size,
+                         -2 * self.image_margin_size:-self.image_margin_size],
+                axis=None)
+
+            full_ann[-self.image_margin_size:, :self.image_margin_size] = np.flip(
+                full_ann[-2 * self.image_margin_size:-self.image_margin_size,
+                         self.image_margin_size:2 * self.image_margin_size],
+                axis=None)
+            full_ann[:self.image_margin_size, -self.image_margin_size:] = np.flip(
+                full_ann[self.image_margin_size:2 * self.image_margin_size,
+                         -2 * self.image_margin_size:-self.image_margin_size],
+                axis=None)
+
+            # assert np.sum(full_ann == -1) == 0
+
             if self.is_eval:
                 h_shift = 0
                 v_shift = 0
@@ -144,10 +179,6 @@ class PatchClassificationDataset(VisionDataset):
                 # shift image randomly
                 h_shift = np.random.randint(-self.patch_size + 1, self.patch_size)
                 v_shift = np.random.randint(-self.patch_size + 1, self.patch_size)
-
-                # TODO test
-                h_shift = 0
-                v_shift = 0
 
             # image has additional margin, so we add it to get the central pixel location in the image
             img = img[self.image_margin_size + h_shift:-self.image_margin_size + h_shift,
@@ -159,11 +190,8 @@ class PatchClassificationDataset(VisionDataset):
 
             # Random horizontal flip
             if not self.is_eval and np.random.random() > 0.5:
-                pass
-                # TODO test
-                # target = np.flip(target, axis=1)
-                # img = torch.flip(img, [2])
-                # TODO maybe add random rotation but it is a bit harder
+                target = np.flip(target, axis=1)
+                img = torch.flip(img, [2])
 
             # Get target as a distribution of classes per patch
             n_target_rows, n_target_cols = int(img.shape[1] / self.patch_size), int(img.shape[2] / self.patch_size)
@@ -173,11 +201,11 @@ class PatchClassificationDataset(VisionDataset):
             for i in range(n_target_rows):
                 for j in range(n_target_cols):
                     patch_classes = target[i * self.patch_size:(i + 1) * self.patch_size,
-                                           j * self.patch_size:(j + 1) * self.patch_size]
+                                    j * self.patch_size:(j + 1) * self.patch_size]
                     pixels_in_patch = patch_classes.size
                     unique, counts = np.unique(patch_classes.flatten(), return_counts=True)
                     for n, c in zip(unique, counts):
-                        target_dist[i, j, n] = c/pixels_in_patch
+                        target_dist[i, j, n] = c / pixels_in_patch
 
             target = target_dist
 

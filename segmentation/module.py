@@ -117,7 +117,6 @@ class PatchClassificationModule(LightningModule):
         output, patch_distances = self.ppnet.forward(image)
 
         # treat each patch as a separate sample in calculating loss
-        # TODO: mask mirror (-1 target)
         log_output_flat = torch.nn.functional.log_softmax(output.reshape(-1, output.shape[-1]))
         target_flat = target.reshape(-1, target.shape[-1])
         kld_loss = self.loss(log_output_flat, target_flat)
@@ -250,7 +249,7 @@ class PatchClassificationModule(LightningModule):
         for key in ['loss', 'kld_loss']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
-        self.log(f'{split_key}/top1_accuracy', metrics['n_correct_top1'] / metrics['n_examples'])
+        self.log(f'{split_key}/top1_accuracy', metrics['n_correct_top1'] / metrics['n_patches'])
         self.log('l1', self.ppnet.last_layer.weight.norm(p=1).item())
 
         p = self.ppnet.prototype_vectors.view(self.ppnet.num_prototypes, -1).cpu()
