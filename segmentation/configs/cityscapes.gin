@@ -31,6 +31,7 @@ Trainer.max_epochs = 1000
 
 PatchClassificationModule.num_warm_epochs = 5
 
+# TODO find best weights?
 PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_clst = 0.1
 PatchClassificationModule.loss_weight_sep = -0.01

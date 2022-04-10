@@ -150,22 +150,20 @@ class PatchClassificationModule(LightningModule):
         dist_flat = patch_distances.permute(0, 2, 3, 1).reshape(-1, patch_distances.shape[1])
         n_p_per_class = self.ppnet.num_prototypes // (self.ppnet.num_classes - 1)
 
-        # TODO maybe we can do it smarter without the loops
-        for patch_i in range(dist_flat.shape[0]):
-            # ignore 'void' class here
-            for cls_i in range(1, target_flat.shape[1]):
-                cls_prob = target_flat[patch_i, cls_i]
-                cls_dist = dist_flat[patch_i, (cls_i - 1) * n_p_per_class:cls_i * n_p_per_class]
-                min_cls_dist = torch.min(cls_dist)
-                # we want to minimize cluster_cost and maximize separation
-                if cls_prob > 0:
-                    cluster_cost += cls_prob * min_cls_dist
-                else:
-                    separation += min_cls_dist
+        # TODO maybe we can do it even smarter without the loop
+        # ignore 'void' class in loop
+        for cls_i in range(1, target_flat.shape[1]):
+            cls_dists = dist_flat[:, (cls_i - 1) * n_p_per_class:cls_i * n_p_per_class]
+            min_cls_dists, _ = torch.min(cls_dists, dim=-1)
 
-        # normalize cluster and separation cost by the number of patches and classes
-        cluster_cost = cluster_cost / n_patches
-        separation = separation / (n_patches * (self.ppnet.num_classes - 1))
+            target_probs = target_flat[:, cls_i]
+
+            # we want to minimize cluster_cost and maximize separation
+            cluster_cost += torch.mean(target_probs * min_cls_dists)
+            separation += torch.mean(min_cls_dists * (target_probs == 0))
+
+        # normalize separation cost by the number of classes
+        separation = separation / self.ppnet.num_classes
 
         loss = (self.loss_weight_crs_ent * kld_loss +
                 self.loss_weight_clst * cluster_cost +
