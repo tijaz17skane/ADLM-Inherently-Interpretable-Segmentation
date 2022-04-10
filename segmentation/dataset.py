@@ -180,7 +180,6 @@ class PatchClassificationDataset(VisionDataset):
                 h_shift = np.random.randint(-self.patch_size + 1, self.patch_size)
                 v_shift = np.random.randint(-self.patch_size + 1, self.patch_size)
 
-            # image has additional margin, so we add it to get the central pixel location in the image
             img = img[self.image_margin_size + h_shift:-self.image_margin_size + h_shift,
                       self.image_margin_size + v_shift:-self.image_margin_size + v_shift]
             target = full_ann[self.image_margin_size + h_shift:-self.image_margin_size + h_shift,

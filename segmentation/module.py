@@ -5,7 +5,6 @@ import os
 from typing import Dict, Optional
 
 import gin
-import numpy
 import torch
 from pytorch_lightning import LightningModule
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -31,6 +30,8 @@ def reset_metrics() -> Dict:
         'n_batches': 0,
         'n_patches': 0,
         'kld_loss': 0,
+        'cluster_cost': 0,
+        'separation': 0,
         'loss': 0
     }
 
@@ -54,6 +55,8 @@ class PatchClassificationModule(LightningModule):
             last_layer_only: bool,
             num_warm_epochs: int = gin.REQUIRED,
             loss_weight_crs_ent: float = gin.REQUIRED,
+            loss_weight_clst: float = gin.REQUIRED,
+            loss_weight_sep: float = gin.REQUIRED,
             loss_weight_l1: float = gin.REQUIRED,
             joint_optimizer_lr_features: float = gin.REQUIRED,
             joint_optimizer_lr_add_on_layers: float = gin.REQUIRED,
@@ -75,6 +78,8 @@ class PatchClassificationModule(LightningModule):
         self.last_layer_only = last_layer_only
         self.num_warm_epochs = num_warm_epochs
         self.loss_weight_crs_ent = loss_weight_crs_ent
+        self.loss_weight_clst = loss_weight_clst
+        self.loss_weight_sep = loss_weight_sep
         self.loss_weight_l1 = loss_weight_l1
         self.joint_optimizer_lr_features = joint_optimizer_lr_features
         self.joint_optimizer_lr_add_on_layers = joint_optimizer_lr_add_on_layers
@@ -117,7 +122,7 @@ class PatchClassificationModule(LightningModule):
         output, patch_distances = self.ppnet.forward(image)
 
         # treat each patch as a separate sample in calculating loss
-        log_output_flat = torch.nn.functional.log_softmax(output.reshape(-1, output.shape[-1]))
+        log_output_flat = torch.nn.functional.log_softmax(output.reshape(-1, output.shape[-1]), dim=-1)
         target_flat = target.reshape(-1, target.shape[-1])
         kld_loss = self.loss(log_output_flat, target_flat)
 
@@ -135,13 +140,42 @@ class PatchClassificationModule(LightningModule):
         metrics['n_correct_top1'] += (output_argmax == target_argmax).sum().item()
 
         metrics['n_batches'] += 1
-        metrics['n_patches'] += output_argmax.numel()
+        n_patches = output_argmax.numel()
+        metrics['n_patches'] += n_patches
         metrics['kld_loss'] += kld_loss.item()
 
-        loss = self.loss_weight_crs_ent * kld_loss + self.loss_weight_l1 * l1
+        # calculate cluster and separation losses
+        cluster_cost, separation = 0, 0
+
+        dist_flat = patch_distances.permute(0, 2, 3, 1).reshape(-1, patch_distances.shape[1])
+        n_p_per_class = self.ppnet.num_prototypes // (self.ppnet.num_classes - 1)
+
+        # TODO maybe we can do it smarter without the loops
+        for patch_i in range(dist_flat.shape[0]):
+            # ignore 'void' class here
+            for cls_i in range(1, target_flat.shape[1]):
+                cls_prob = target_flat[patch_i, cls_i]
+                cls_dist = dist_flat[patch_i, (cls_i - 1) * n_p_per_class:cls_i * n_p_per_class]
+                min_cls_dist = torch.min(cls_dist)
+                # we want to minimize cluster_cost and maximize separation
+                if cls_prob > 0:
+                    cluster_cost += cls_prob * min_cls_dist
+                else:
+                    separation += min_cls_dist
+
+        # normalize cluster and separation cost by the number of patches and classes
+        cluster_cost = cluster_cost / n_patches
+        separation = separation / (n_patches * (self.ppnet.num_classes - 1))
+
+        loss = (self.loss_weight_crs_ent * kld_loss +
+                self.loss_weight_clst * cluster_cost +
+                self.loss_weight_sep * separation +
+                self.loss_weight_l1 * l1)
 
         loss_value = loss.item()
         metrics['loss'] += loss_value
+        metrics['cluster_cost'] += cluster_cost.item()
+        metrics['separation'] += separation.item()
 
         if split_key == 'train':
             warm_optim, main_optim = self.optimizers()
@@ -214,14 +248,6 @@ class PatchClassificationModule(LightningModule):
                 stage_key = 'nopush'
                 self.lr_scheduler.step(val_loss)
 
-        # TODO delete
-        if self.metrics['train']['n_batches'] > 0:
-            train_top1 = self.metrics['train']['n_correct_top1'] / self.metrics['train']['n_patches']
-            train_loss = self.metrics['train']['kld_loss'] / self.metrics['train']['n_batches']
-            log(f'TRAIN Top 1 accuracy: ' + str(train_top1) + ', KLD loss: ' + str(train_loss))
-        if self.metrics['val']['n_batches'] > 0:
-            log(f'VAL   Top 1 accuracy: ' + str(val_top1) + ', KLD loss: ' + str(val_loss))
-
         if val_loss < self.best_loss:
             log(f'Saving best model, top 1 accuracy: ' + str(val_top1) + ', KLD loss: ' + str(val_loss))
             self.best_loss = val_loss
@@ -246,7 +272,7 @@ class PatchClassificationModule(LightningModule):
         metrics = self.metrics[split_key]
         n_batches = metrics['n_batches']
 
-        for key in ['loss', 'kld_loss']:
+        for key in ['loss', 'kld_loss', 'cluster_cost', 'separation']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         self.log(f'{split_key}/top1_accuracy', metrics['n_correct_top1'] / metrics['n_patches'])

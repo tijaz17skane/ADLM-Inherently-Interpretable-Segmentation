@@ -24,7 +24,7 @@ PatchClassificationDataset.image_margin_size = 512
 PatchClassificationDataset.patch_size = 128
 PatchClassificationDataset.num_classes = 29
 
-PatchClassificationDataModule.dataloader_n_jobs = 8  # TODO 16
+PatchClassificationDataModule.dataloader_n_jobs = 16
 DataLoader.batch_size = 1
 
 Trainer.max_epochs = 1000
@@ -32,6 +32,8 @@ Trainer.max_epochs = 1000
 PatchClassificationModule.num_warm_epochs = 5
 
 PatchClassificationModule.loss_weight_crs_ent = 1.0
+PatchClassificationModule.loss_weight_clst = 0.1
+PatchClassificationModule.loss_weight_sep = -0.01
 PatchClassificationModule.loss_weight_l1 = 1e-4
 
 PatchClassificationModule.joint_optimizer_lr_features = 5e-5
@@ -46,7 +48,7 @@ PatchClassificationModule.warm_optimizer_weight_decay = 1e-4
 PatchClassificationModule.last_layer_optimizer_lr = 1e-5
 
 PatchClassificationModule.warmup_batches = 2975
-PatchClassificationModule.gradient_clipping = None
+PatchClassificationModule.gradient_clipping = 100
 
 ReduceLROnPlateau.mode = 'min'
 ReduceLROnPlateau.factor = 0.5

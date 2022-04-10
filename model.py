@@ -178,10 +178,6 @@ class PPNet(nn.Module):
         x2 = x ** 2
         x2_patch_sum = F.conv2d(input=x2, weight=self.ones)
 
-        # TODO
-        vec = self.prototype_vectors[:, :, 0, 0]
-        d = torch.cdist(vec, vec).flatten()
-
         p2 = self.prototype_vectors ** 2
         p2 = torch.sum(p2, dim=(1, 2, 3))
         # p2 is a vector of shape (num_prototypes,)

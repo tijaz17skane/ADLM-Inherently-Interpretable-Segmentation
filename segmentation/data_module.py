@@ -70,10 +70,6 @@ class PatchClassificationDataModule(LightningDataModule):
             split_key='train',
             is_eval=True,
             model_image_size=self.model_image_size,
-            push_prototypes=True,
-            min_window_size=224,
-            max_window_size=224,
-            balance_classes=True,
-            length_multiplier=5000
+            push_prototypes=True
         )
         return self.get_data_loader(train_split)
