@@ -155,7 +155,6 @@ class PatchClassificationModule(LightningModule):
         for cls_i in range(1, target_flat.shape[1]):
             cls_dists = dist_flat[:, (cls_i - 1) * n_p_per_class:cls_i * n_p_per_class]
             min_cls_dists, _ = torch.min(cls_dists, dim=-1)
-
             target_probs = target_flat[:, cls_i]
 
             # we want to minimize cluster_cost and maximize separation
