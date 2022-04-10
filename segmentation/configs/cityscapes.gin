@@ -34,19 +34,19 @@ PatchClassificationModule.num_warm_epochs = 5
 # TODO find best weights?
 PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_clst = 0.1
-PatchClassificationModule.loss_weight_sep = -0.001
+PatchClassificationModule.loss_weight_sep = -0.01
 PatchClassificationModule.loss_weight_l1 = 1e-4
 
-PatchClassificationModule.joint_optimizer_lr_features = 5e-5
-PatchClassificationModule.joint_optimizer_lr_add_on_layers = 1e-4
-PatchClassificationModule.joint_optimizer_lr_prototype_vectors = 1e-4
+PatchClassificationModule.joint_optimizer_lr_features = 1e-4
+PatchClassificationModule.joint_optimizer_lr_add_on_layers = 2e-4
+PatchClassificationModule.joint_optimizer_lr_prototype_vectors = 2e-4
 PatchClassificationModule.joint_optimizer_weight_decay = 1e-4
 
-PatchClassificationModule.warm_optimizer_lr_add_on_layers = 1e-4
-PatchClassificationModule.warm_optimizer_lr_prototype_vectors = 1e-4
+PatchClassificationModule.warm_optimizer_lr_add_on_layers = 2e-4
+PatchClassificationModule.warm_optimizer_lr_prototype_vectors = 2e-4
 PatchClassificationModule.warm_optimizer_weight_decay = 1e-4
 
-PatchClassificationModule.last_layer_optimizer_lr = 1e-5
+PatchClassificationModule.last_layer_optimizer_lr = 5e-4
 
 PatchClassificationModule.warmup_batches = 2975
 PatchClassificationModule.gradient_clipping = 100

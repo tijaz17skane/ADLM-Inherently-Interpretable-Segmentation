@@ -196,8 +196,6 @@ class PPNet(nn.Module):
         x is the raw input
         '''
         conv_features = self.conv_features(x)
-        feat_flat = conv_features[0].reshape(512, -1).T
-        feat_dist = torch.cdist(feat_flat, feat_flat)
         distances = self._l2_convolution(conv_features)
         return distances
 

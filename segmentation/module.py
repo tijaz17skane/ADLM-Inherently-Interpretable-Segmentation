@@ -158,11 +158,12 @@ class PatchClassificationModule(LightningModule):
             target_probs = target_flat[:, cls_i]
 
             # we want to minimize cluster_cost and maximize separation
-            cluster_cost += torch.mean(target_probs * min_cls_dists)
-            separation += torch.mean(min_cls_dists * (target_probs == 0))
+            cluster_cost += torch.sum(target_probs * min_cls_dists)
+            separation += torch.sum(min_cls_dists * (target_probs == 0))
 
-        # normalize separation cost by the number of classes
-        separation = separation / self.ppnet.num_classes
+        # normalize cluster and separation losses
+        separation = separation / ((self.ppnet.num_classes**2) * target_flat.shape[0])
+        cluster_cost = cluster_cost / (self.ppnet.num_classes * target_flat.shape[0])
 
         loss = (self.loss_weight_crs_ent * kld_loss +
                 self.loss_weight_clst * cluster_cost +
