@@ -100,11 +100,7 @@ def train(
         trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
                           enable_progress_bar=False)
 
-        # TODO test
-        if False:
-            trainer.fit(model=module, datamodule=data_module)
-
-        # TODO check if pushing prototypes works
+        trainer.fit(model=module, datamodule=data_module)
 
         best_checkpoint = os.path.join(results_dir, 'checkpoints', 'nopush_best.pth')
         log(f'Loading best model from {best_checkpoint}')
@@ -126,8 +122,7 @@ def train(
             preprocess_input_function=preprocess_push_input,
             prototype_layer_stride=1,
             root_dir_for_saving_prototypes=module.prototypes_dir,
-            # epoch_number=module.current_epoch, # TODO
-            epoch_number=45, # TODO
+            epoch_number=module.current_epoch,
             prototype_img_filename_prefix='prototype-img',
             prototype_self_act_filename_prefix='prototype-self-act',
             proto_bound_boxes_filename_prefix='bb',
