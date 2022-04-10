@@ -152,6 +152,7 @@ class PatchClassificationModule(LightningModule):
 
         # TODO maybe we can do it even smarter without the loop
         # ignore 'void' class in loop
+        separation = []
         for cls_i in range(1, target_flat.shape[1]):
             cls_dists = dist_flat[:, (cls_i - 1) * n_p_per_class:cls_i * n_p_per_class]
             min_cls_dists, _ = torch.min(cls_dists, dim=-1)
@@ -159,11 +160,15 @@ class PatchClassificationModule(LightningModule):
 
             # we want to minimize cluster_cost and maximize separation
             cluster_cost += torch.sum(target_probs * min_cls_dists)
-            separation += torch.sum(min_cls_dists * (target_probs == 0))
+            separation.append(min_cls_dists + 10e6 * (target_probs != 0))
 
-        # normalize cluster and separation losses
-        separation = separation / ((self.ppnet.num_classes**2) * target_flat.shape[0])
-        cluster_cost = cluster_cost / (self.ppnet.num_classes * target_flat.shape[0])
+        # separation cost = minimum over distances to all classes that have score==0.0
+        separation = torch.stack(separation, dim=-1)
+        separation, _ = torch.min(separation, dim=-1)
+        separation = torch.mean(separation)
+
+        # normalize cluster loss
+        cluster_cost = cluster_cost / target_flat.shape[0]
 
         loss = (self.loss_weight_crs_ent * kld_loss +
                 self.loss_weight_clst * cluster_cost +
