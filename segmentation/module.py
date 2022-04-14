@@ -36,6 +36,7 @@ def reset_metrics() -> Dict:
         'cross_entropy': 0,
         'cluster_cost': 0,
         'separation': 0,
+        'separation_higher': 0,
         'contrastive_loss': 0,
         'loss': 0
     }
@@ -193,6 +194,7 @@ class PatchClassificationModule(LightningModule):
         contrastive_input = torch.stack((cluster_cost, separation), dim=-1)
         contrastive_target = torch.ones(contrastive_input.shape[0], device=contrastive_input.device, dtype=torch.long)
         contrastive_loss = torch.nn.functional.cross_entropy(contrastive_input, contrastive_target)
+        metrics['separation_higher'] += torch.sum(separation > cluster_cost).item()
 
         cluster_cost = torch.mean(cluster_cost)
         separation = torch.mean(separation)
@@ -307,6 +309,8 @@ class PatchClassificationModule(LightningModule):
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         self.log(f'{split_key}/accuracy', metrics['n_correct'] / (metrics['n_patches'] * self.ppnet.num_classes))
+        self.log(f'{split_key}/separation_higher',
+                 metrics['separation_higher'] / (metrics['n_patches'] * self.ppnet.num_classes))
 
         pred_pos = metrics['tp'] + metrics['fp']
         precision = metrics['tp'] / pred_pos if pred_pos != 0 else 1.0
