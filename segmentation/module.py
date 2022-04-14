@@ -2,11 +2,15 @@
 Pytorch Lightning Module for training prototype segmentation model on Cityscapes and SUN datasets
 """
 import os
+import sys
+import traceback
 from typing import Dict, Optional
 
 import gin
+import numpy as np
 import torch
 from pytorch_lightning import LightningModule
+from sklearn.metrics import roc_auc_score, roc_curve, auc
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from helpers import list_of_distances
@@ -27,6 +31,8 @@ def reset_metrics() -> Dict:
     return {
         'n_examples': 0,
         'n_correct': 0,
+        'pos_scores': [],
+        'neg_scores': [],
         'tp': 0,
         'tn': 0,
         'fp': 0,
@@ -114,7 +120,7 @@ class PatchClassificationModule(LightningModule):
         # we use optimizers manually
         self.automatic_optimization = False
 
-        self.best_acc = 0.0
+        self.best_auroc = 0.0
 
         # use this for distribution prediction
         # self.loss = torch.nn.KLDivLoss(reduction='batchmean')
@@ -141,11 +147,11 @@ class PatchClassificationModule(LightningModule):
         target_flat = target.reshape(-1, target.shape[-1])
 
         # make positive targets have the same weights as negatives in each patch
-        n_pos = torch.sum(1-target_flat, dim=-1).unsqueeze(-1)
-        n_neg = torch.sum(target_flat, dim=-1).unsqueeze(-1)
+        n_neg = torch.sum(1-target_flat, dim=-1).unsqueeze(-1)
+        n_pos = torch.sum(target_flat, dim=-1).unsqueeze(-1)
 
-        pos_weight = n_pos / n_neg
-        neg_weight = n_neg / n_pos
+        pos_weight = n_neg / n_pos
+        neg_weight = n_pos / n_neg
 
         weight = pos_weight * target_flat + neg_weight * (1-target_flat)
 
@@ -163,11 +169,16 @@ class PatchClassificationModule(LightningModule):
         # evaluation statistics
         _, predicted = torch.max(output.data, 1)
 
-        output_class = (torch.sigmoid(output_flat) > 0.5).to(torch.float)
+        output_sigmoid = torch.sigmoid(output_flat)
+        output_class = (output_sigmoid > 0.5).to(torch.float)
 
         is_correct = output_class == target_flat
+        metrics['n_correct'] += torch.sum(is_correct)
 
-        metrics['n_correct'] += torch.sum(is_correct).item()
+        target_mask = target_flat.bool()
+
+        metrics['pos_scores'] += list(torch.masked_select(output_sigmoid, target_mask).cpu().detach().numpy())
+        metrics['neg_scores'] += list(torch.masked_select(output_sigmoid, ~target_mask).cpu().detach().numpy())
 
         metrics['tp'] += torch.sum(is_correct * target_flat).item()
         metrics['tn'] += torch.sum(is_correct * (1-target_flat)).item()
@@ -277,12 +288,16 @@ class PatchClassificationModule(LightningModule):
             self.metrics[split_key] = reset_metrics()
 
     def on_validation_epoch_end(self):
-        val_acc = self.metrics['val']['n_correct'] / (self.metrics['val']['n_patches'] * self.ppnet.num_classes)
+        pos_scores, neg_scores = self.metrics['val']['pos_scores'], self.metrics['val']['neg_scores']
+
+        pred_scores = np.concatenate((np.asarray(pos_scores), np.asarray(neg_scores)))
+        true_scores = np.concatenate((np.ones(len(pos_scores)), np.zeros(len(neg_scores)))).astype(int)
+        val_auroc = roc_auc_score(true_scores, pred_scores)
 
         if self.last_layer_only:
             self.log('training_stage', 2.0)
             stage_key = 'push'
-            self.lr_scheduler.step(val_acc)
+            self.lr_scheduler.step(val_auroc)
         else:
             if self.current_epoch < self.num_warm_epochs:
                 # noinspection PyUnresolvedReferences
@@ -292,16 +307,16 @@ class PatchClassificationModule(LightningModule):
                 # noinspection PyUnresolvedReferences
                 self.log('training_stage', 1.0)
                 stage_key = 'nopush'
-                self.lr_scheduler.step(val_acc)
+                self.lr_scheduler.step(val_auroc)
 
-        if val_acc > self.best_acc:
-            log(f'Saving best model, accuracy: ' + str(val_acc))
-            self.best_acc = val_acc
+        if val_auroc > self.best_auroc:
+            log(f'Saving best model, AUROC: ' + str(val_auroc))
+            self.best_auroc = val_auroc
             save_model_w_condition(
                 model=self.ppnet,
                 model_dir=self.checkpoints_dir,
                 model_name=f'{stage_key}_best',
-                accu=val_acc,
+                accu=val_auroc,
                 target_accu=0.0,
                 log=log
             )
@@ -309,7 +324,7 @@ class PatchClassificationModule(LightningModule):
             model=self.ppnet,
             model_dir=self.checkpoints_dir,
             model_name=f'{stage_key}_last',
-            accu=val_acc,
+            accu=val_auroc,
             target_accu=0.0,
             log=log
         )
@@ -320,8 +335,16 @@ class PatchClassificationModule(LightningModule):
 
         for key in ['loss', 'contrastive_loss', 'cross_entropy', 'cluster_cost', 'separation']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
-
+            
         self.log(f'{split_key}/accuracy', metrics['n_correct'] / (metrics['n_patches'] * self.ppnet.num_classes))
+
+        pred_scores = np.concatenate((np.array(metrics['pos_scores']), np.asarray(metrics['neg_scores'])))
+        true_scores = np.concatenate((np.ones(len(metrics['pos_scores'])), np.zeros(len(metrics['neg_scores']))))
+        true_scores = true_scores.astype(int)
+
+        auroc = roc_auc_score(true_scores, pred_scores)
+
+        self.log(f'{split_key}/auroc', auroc)
         self.log(f'{split_key}/separation_higher', metrics['separation_higher'] / metrics['n_patches'])
 
         pred_pos = metrics['tp'] + metrics['fp']
