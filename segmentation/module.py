@@ -169,8 +169,11 @@ class PatchClassificationModule(LightningModule):
 
         # TODO maybe we can do it even smarter without the loop
         # ignore 'void' class in loop
-        # TODO: fix for cityscapes - ignore loss for the last class, which never appears
-        for cls_i in range(1, target_flat.shape[1]-1):
+        for cls_i in range(1, target_flat.shape[1]):
+            # try contrastive loss formulation - calculate separate/cluster cost only for classes that appear in batch
+            if torch.sum(target_flat[:, cls_i]) == 0:
+                continue
+
             cls_dists = dist_flat[:, (cls_i - 1) * n_p_per_class:cls_i * n_p_per_class]
             min_cls_dists, _ = torch.min(cls_dists, dim=-1)
             target_cls = target_flat[:, cls_i]
