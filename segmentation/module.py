@@ -59,6 +59,7 @@ class PatchClassificationModule(LightningModule):
             last_layer_only: bool,
             num_warm_epochs: int = gin.REQUIRED,
             loss_weight_crs_ent: float = gin.REQUIRED,
+            loss_weight_contrastive: float = gin.REQUIRED,
             loss_weight_clst: float = gin.REQUIRED,
             loss_weight_sep: float = gin.REQUIRED,
             loss_weight_l1: float = gin.REQUIRED,
@@ -82,6 +83,7 @@ class PatchClassificationModule(LightningModule):
         self.last_layer_only = last_layer_only
         self.num_warm_epochs = num_warm_epochs
         self.loss_weight_crs_ent = loss_weight_crs_ent
+        self.loss_weight_contrastive = loss_weight_contrastive
         self.loss_weight_clst = loss_weight_clst
         self.loss_weight_sep = loss_weight_sep
         self.loss_weight_l1 = loss_weight_l1
@@ -170,10 +172,6 @@ class PatchClassificationModule(LightningModule):
         # TODO maybe we can do it even smarter without the loop
         # ignore 'void' class in loop
         for cls_i in range(1, target_flat.shape[1]):
-            # try contrastive loss formulation - calculate separate/cluster cost only for classes that appear in batch
-            if torch.sum(target_flat[:, cls_i]) == 0:
-                continue
-
             cls_dists = dist_flat[:, (cls_i - 1) * n_p_per_class:cls_i * n_p_per_class]
             min_cls_dists, _ = torch.min(cls_dists, dim=-1)
             target_cls = target_flat[:, cls_i]
@@ -185,14 +183,21 @@ class PatchClassificationModule(LightningModule):
         # separation cost = minimum over distances to all classes that have score==0.0
         separation = torch.stack(separation, dim=-1)
         separation, _ = torch.min(separation, dim=-1)
-        separation = torch.mean(separation)
 
         # cluster cost = maximum over distances to all classes that have score!=0.0
         cluster_cost = torch.stack(cluster_cost, dim=-1)
         cluster_cost, _ = torch.max(cluster_cost, dim=-1)
+
+        # try contrastive loss formulation (we want higher 'logits' for separation than for cluster cost)
+        contrastive_input = torch.stack((cluster_cost, separation), dim=-1)
+        contrastive_target = torch.ones(contrastive_input.shape[0], device=contrastive_input.device, dtype=torch.long)
+        contrastive_loss = torch.nn.functional.cross_entropy(contrastive_input, contrastive_target)
+
         cluster_cost = torch.mean(cluster_cost)
+        separation = torch.mean(separation)
 
         loss = (self.loss_weight_crs_ent * cross_entropy +
+                self.loss_weight_contrastive * contrastive_loss +
                 self.loss_weight_clst * cluster_cost +
                 self.loss_weight_sep * separation +
                 self.loss_weight_l1 * l1)
