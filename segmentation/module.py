@@ -119,7 +119,7 @@ class PatchClassificationModule(LightningModule):
         # use this for distribution prediction
         # self.loss = torch.nn.KLDivLoss(reduction='batchmean')
 
-        self.loss = torch.nn.BCEWithLogitsLoss(reduction='mean')
+        # self.loss = torch.nn.BCEWithLogitsLoss(reduction='mean')
 
     def forward(self, x):
         return self.ppnet(x)
@@ -140,7 +140,20 @@ class PatchClassificationModule(LightningModule):
         output_flat = output.reshape(-1, output.shape[-1])
         target_flat = target.reshape(-1, target.shape[-1])
 
-        cross_entropy = self.loss(output_flat, target_flat)
+        # make positive targets have the same weights as negatives in each patch
+        n_pos = torch.sum(1-target_flat, dim=-1).unsqueeze(-1)
+        n_neg = torch.sum(target_flat, dim=-1).unsqueeze(-1)
+
+        pos_weight = n_pos / n_neg
+        neg_weight = n_neg / n_pos
+
+        weight = pos_weight * target_flat + neg_weight * (1-target_flat)
+
+        cross_entropy = torch.nn.functional.binary_cross_entropy_with_logits(
+            output_flat,
+            target_flat,
+            weight=weight
+        )
 
         l1_mask = 1 - torch.t(self.ppnet.prototype_class_identity).to(self.device)
         l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
@@ -309,8 +322,7 @@ class PatchClassificationModule(LightningModule):
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         self.log(f'{split_key}/accuracy', metrics['n_correct'] / (metrics['n_patches'] * self.ppnet.num_classes))
-        self.log(f'{split_key}/separation_higher',
-                 metrics['separation_higher'] / metrics['n_patches'])
+        self.log(f'{split_key}/separation_higher', metrics['separation_higher'] / metrics['n_patches'])
 
         pred_pos = metrics['tp'] + metrics['fp']
         precision = metrics['tp'] / pred_pos if pred_pos != 0 else 1.0
