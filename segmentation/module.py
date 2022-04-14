@@ -310,7 +310,7 @@ class PatchClassificationModule(LightningModule):
 
         self.log(f'{split_key}/accuracy', metrics['n_correct'] / (metrics['n_patches'] * self.ppnet.num_classes))
         self.log(f'{split_key}/separation_higher',
-                 metrics['separation_higher'] / (metrics['n_patches'] * self.ppnet.num_classes))
+                 metrics['separation_higher'] / metrics['n_patches'])
 
         pred_pos = metrics['tp'] + metrics['fp']
         precision = metrics['tp'] / pred_pos if pred_pos != 0 else 1.0
