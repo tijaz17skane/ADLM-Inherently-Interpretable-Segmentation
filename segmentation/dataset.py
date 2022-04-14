@@ -200,11 +200,17 @@ class PatchClassificationDataset(VisionDataset):
             for i in range(n_target_rows):
                 for j in range(n_target_cols):
                     patch_classes = target[i * self.patch_size:(i + 1) * self.patch_size,
-                                    j * self.patch_size:(j + 1) * self.patch_size]
-                    pixels_in_patch = patch_classes.size
-                    unique, counts = np.unique(patch_classes.flatten(), return_counts=True)
-                    for n, c in zip(unique, counts):
-                        target_dist[i, j, n] = c / pixels_in_patch
+                                           j * self.patch_size:(j + 1) * self.patch_size]
+
+                    # uncomment for distribution
+                    # unique, counts = np.unique(patch_classes.flatten(), return_counts=True)
+                    # pixels_in_patch = patch_classes.size
+                    # for n, c in zip(unique, counts):
+                    # target_dist[i, j, n] = c / pixels_in_patch
+
+                    # multi-label classification
+                    for n in np.unique(patch_classes):
+                        target_dist[i, j, n] = 1.0
 
             target = target_dist
 

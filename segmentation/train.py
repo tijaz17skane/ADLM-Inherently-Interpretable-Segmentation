@@ -87,7 +87,7 @@ def train(
 
         log('MAIN TRAINING')
         callbacks = [
-            EarlyStopping(monitor='val/kld_loss', patience=early_stopping_patience_main, mode='min')
+            EarlyStopping(monitor='val/accuracy', patience=early_stopping_patience_main, mode='max')
         ]
 
         module = PatchClassificationModule(
@@ -151,7 +151,7 @@ def train(
 
     log('LAST LAYER FINE-TUNING')
     callbacks = [
-        EarlyStopping(monitor='val/kld_loss', patience=early_stopping_patience_last_layer, mode='min')
+        EarlyStopping(monitor='val/accuracy', patience=early_stopping_patience_last_layer, mode='max')
     ]
 
     module = PatchClassificationModule(

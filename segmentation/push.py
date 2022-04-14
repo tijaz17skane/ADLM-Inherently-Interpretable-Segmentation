@@ -218,10 +218,14 @@ def update_prototypes_on_batch(search_batch_input,
             # that generates the representation
             protoL_rf_info = prototype_network_parallel.proto_layer_rf_info
             # rf_prototype_j = compute_rf_prototype((search_batch.shape[2], search_batch.shape[3]),
-                                                  # batch_argmin_proto_dist, protoL_rf_info)
-            # TODO 128 - not hardcoded
-            rf_start_h_index, rf_end_h_index = batch_argmin_proto_dist[1]*128, (batch_argmin_proto_dist[1]+1)*128
-            rf_start_w_index, rf_end_w_index = batch_argmin_proto_dist[2]*128, (batch_argmin_proto_dist[2]+1)*128
+            # batch_argmin_proto_dist, protoL_rf_info)
+
+            # TODO patch size - not hardcoded
+            patch_size = 64
+            rf_start_h_index, rf_end_h_index = batch_argmin_proto_dist[1] * patch_size, \
+                                               (batch_argmin_proto_dist[1] + 1) * patch_size
+            rf_start_w_index, rf_end_w_index = batch_argmin_proto_dist[2] * patch_size, \
+                                               (batch_argmin_proto_dist[2] + 1) * patch_size
 
             rf_prototype_j = [img_index_in_batch, rf_start_h_index, rf_end_h_index, rf_start_w_index, rf_end_w_index]
 
