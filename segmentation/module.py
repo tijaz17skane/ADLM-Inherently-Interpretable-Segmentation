@@ -36,6 +36,7 @@ def reset_metrics() -> Dict:
         'cross_entropy': 0,
         'cluster_cost': 0,
         'separation': 0,
+        'contrastive_loss': 0,
         'loss': 0
     }
 
@@ -204,6 +205,7 @@ class PatchClassificationModule(LightningModule):
 
         loss_value = loss.item()
         metrics['loss'] += loss_value
+        metrics['contrastive_loss'] += contrastive_loss.item()
         metrics['cluster_cost'] += cluster_cost.item()
         metrics['separation'] += separation.item()
 
@@ -301,7 +303,7 @@ class PatchClassificationModule(LightningModule):
         metrics = self.metrics[split_key]
         n_batches = metrics['n_batches']
 
-        for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation']:
+        for key in ['loss', 'contrastive_loss', 'cross_entropy', 'cluster_cost', 'separation']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         self.log(f'{split_key}/accuracy', metrics['n_correct'] / (metrics['n_patches'] * self.ppnet.num_classes))
