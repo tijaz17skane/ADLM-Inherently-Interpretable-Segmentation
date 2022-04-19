@@ -31,8 +31,10 @@ def reset_metrics() -> Dict:
         'cross_entropy': 0,
         'cluster_cost': 0,
         'loss': 0,
-        'separation_cost': 0,
-        'avg_separation_cost': 0
+        'separation': 0,
+        'separation_higher': 0,
+        'contrastive_loss': 0,
+        'avg_separation': 0
     }
 
 
@@ -56,6 +58,7 @@ class SlidingWindowModule(LightningModule):
             class_specific: bool = gin.REQUIRED,
             num_warm_epochs: int = gin.REQUIRED,
             loss_weight_crs_ent: float = gin.REQUIRED,
+            loss_weight_contrastive: float = gin.REQUIRED,
             loss_weight_clst: float = gin.REQUIRED,
             loss_weight_sep: float = gin.REQUIRED,
             loss_weight_l1: float = gin.REQUIRED,
@@ -80,6 +83,7 @@ class SlidingWindowModule(LightningModule):
         self.class_specific = class_specific
         self.num_warm_epochs = num_warm_epochs
         self.loss_weight_crs_ent = loss_weight_crs_ent
+        self.loss_weight_contrastive = loss_weight_contrastive
         self.loss_weight_clst = loss_weight_clst
         self.loss_weight_sep = loss_weight_sep
         self.loss_weight_l1 = loss_weight_l1
@@ -124,7 +128,7 @@ class SlidingWindowModule(LightningModule):
 
         # noinspection PyUnresolvedReferences
         cross_entropy = torch.nn.functional.cross_entropy(output, target)
-        separation_cost = 0
+        separation, contrastive_loss = 0, 0
 
         if self.class_specific:
             max_dist = (self.ppnet.prototype_shape[1]
@@ -143,7 +147,7 @@ class SlidingWindowModule(LightningModule):
 
             # ignore 'void' class (0) in calculating cluster loss
             inverted_distances[target == 0] = max_dist
-            cluster_cost = torch.mean(max_dist - inverted_distances)
+            cluster_cost = max_dist - inverted_distances
 
             # calculate separation cost
             prototypes_of_wrong_class = 1 - prototypes_of_correct_class
@@ -154,7 +158,17 @@ class SlidingWindowModule(LightningModule):
             # (we might not care if prototypes are "similar" to void class - we do not use prototypes for it)
             # inverted_distances_to_nontarget_prototypes[target == 0] = max_dist
 
-            separation_cost = torch.mean(max_dist - inverted_distances_to_nontarget_prototypes)
+            separation = max_dist - inverted_distances_to_nontarget_prototypes
+
+            # try contrastive loss formulation (we want higher 'logits' for separation than for cluster cost)
+            contrastive_input = torch.stack((cluster_cost, separation), dim=-1)
+            contrastive_target = torch.ones(contrastive_input.shape[0], device=contrastive_input.device,
+                                            dtype=torch.long)
+            contrastive_loss = torch.nn.functional.cross_entropy(contrastive_input, contrastive_target)
+            metrics['separation_higher'] += torch.sum(separation > cluster_cost).item()
+
+            cluster_cost = torch.mean(cluster_cost)
+            separation = torch.mean(separation)
 
             # calculate avg cluster cost
             avg_separation_cost = \
@@ -165,8 +179,8 @@ class SlidingWindowModule(LightningModule):
             l1_mask = 1 - torch.t(self.ppnet.prototype_class_identity).to(self.device)
             l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
 
-            metrics['separation_cost'] += separation_cost.item()
-            metrics['avg_separation_cost'] += avg_separation_cost.item()
+            metrics['separation'] += separation.item()
+            metrics['avg_separation'] += avg_separation_cost.item()
 
         else:
             min_distance, _ = torch.min(min_distances, dim=1)
@@ -184,15 +198,18 @@ class SlidingWindowModule(LightningModule):
 
         if self.class_specific:
             loss = (self.loss_weight_crs_ent * cross_entropy
+                    + self.loss_weight_contrastive * contrastive_loss
                     + self.loss_weight_clst * cluster_cost
-                    + self.loss_weight_sep * separation_cost
+                    + self.loss_weight_sep * separation
                     + self.loss_weight_l1 * l1)
         else:
             loss = (self.loss_weight_crs_ent * cross_entropy
                     + self.loss_weight_clst * cluster_cost
                     + self.loss_weight_sep * l1)
+
         loss_value = loss.item()
         metrics['loss'] += loss_value
+        metrics['contrastive_loss'] += contrastive_loss.item()
 
         if split_key == 'train':
             warm_optim, main_optim = self.optimizers()
@@ -289,10 +306,12 @@ class SlidingWindowModule(LightningModule):
         metrics = self.metrics[split_key]
         n_batches = metrics['n_batches']
 
-        for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation_cost', 'avg_separation_cost']:
+        for key in ['loss', 'contrastive_loss', 'cross_entropy', 'cluster_cost', 'separation', 'avg_separation']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         self.log(f'{split_key}/accuracy', metrics['n_correct'] / metrics['n_examples'])
+        self.log(f'{split_key}/separation_higher', metrics['separation_higher'] / metrics['n_examples'])
+
         self.log('l1', self.ppnet.last_layer.weight.norm(p=1).item())
 
         p = self.ppnet.prototype_vectors.view(self.ppnet.num_prototypes, -1).cpu()

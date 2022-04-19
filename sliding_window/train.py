@@ -29,7 +29,7 @@ Trainer = gin.external_configurable(Trainer)
 @gin.configurable(allowlist=['model_image_size', 'random_seed',
                              'early_stopping_patience_main', 'early_stopping_patience_last_layer',
                              'start_checkpoint'])
-def train(
+def train_sliding_window(
         config_path: str,
         experiment_name: str,
         pruned: bool = False,
@@ -181,7 +181,7 @@ def load_config_and_train(
         start_epoch: int = 0
 ):
     gin.parse_config_file(f'sliding_window/configs/{config_path}.gin')
-    train(config_path, experiment_name, pruned=pruned, start_epoch=start_epoch)
+    train_sliding_window(config_path, experiment_name, pruned=pruned, start_epoch=start_epoch)
 
 
 if __name__ == '__main__':
