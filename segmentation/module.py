@@ -120,7 +120,7 @@ class PatchClassificationModule(LightningModule):
         # we use optimizers manually
         self.automatic_optimization = False
 
-        self.best_auroc = 0.0
+        self.best_loss = 10e6
 
         # use this for distribution prediction
         # self.loss = torch.nn.KLDivLoss(reduction='batchmean')
@@ -288,16 +288,12 @@ class PatchClassificationModule(LightningModule):
             self.metrics[split_key] = reset_metrics()
 
     def on_validation_epoch_end(self):
-        pos_scores, neg_scores = self.metrics['val']['pos_scores'], self.metrics['val']['neg_scores']
-
-        pred_scores = np.concatenate((np.asarray(pos_scores), np.asarray(neg_scores)))
-        true_scores = np.concatenate((np.ones(len(pos_scores)), np.zeros(len(neg_scores)))).astype(int)
-        val_auroc = roc_auc_score(true_scores, pred_scores)
+        val_loss = self.metrics['val']['cross_entropy'] / self.metrics['val']['n_batches']
 
         if self.last_layer_only:
             self.log('training_stage', 2.0)
             stage_key = 'push'
-            self.lr_scheduler.step(val_auroc)
+            self.lr_scheduler.step(val_loss)
         else:
             if self.current_epoch < self.num_warm_epochs:
                 # noinspection PyUnresolvedReferences
@@ -307,16 +303,16 @@ class PatchClassificationModule(LightningModule):
                 # noinspection PyUnresolvedReferences
                 self.log('training_stage', 1.0)
                 stage_key = 'nopush'
-                self.lr_scheduler.step(val_auroc)
+                self.lr_scheduler.step(val_loss)
 
-        if val_auroc > self.best_auroc:
-            log(f'Saving best model, AUROC: ' + str(val_auroc))
-            self.best_auroc = val_auroc
+        if val_loss < self.best_loss:
+            log(f'Saving best model, loss: ' + str(val_loss))
+            self.best_loss = val_loss
             save_model_w_condition(
                 model=self.ppnet,
                 model_dir=self.checkpoints_dir,
                 model_name=f'{stage_key}_best',
-                accu=val_auroc,
+                accu=val_loss,
                 target_accu=0.0,
                 log=log
             )
@@ -324,7 +320,7 @@ class PatchClassificationModule(LightningModule):
             model=self.ppnet,
             model_dir=self.checkpoints_dir,
             model_name=f'{stage_key}_last',
-            accu=val_auroc,
+            accu=val_loss,
             target_accu=0.0,
             log=log
         )

@@ -50,7 +50,7 @@ SlidingWindowModule.gradient_clipping = 10
 
 ReduceLROnPlateau.mode = 'max'
 ReduceLROnPlateau.factor = 0.5
-ReduceLROnPlateau.patience = 8
+ReduceLROnPlateau.patience = 6
 ReduceLROnPlateau.min_lr = 1e-7
 
 PPNet.void_negative_weight = -0.5
