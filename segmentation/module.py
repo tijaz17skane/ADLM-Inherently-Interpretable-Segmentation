@@ -347,8 +347,6 @@ class PatchClassificationModule(LightningModule):
         for key in ['loss', 'contrastive_loss', 'cross_entropy', 'cluster_cost', 'separation']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
-        self.log(f'{split_key}/accuracy', metrics['n_correct'] / (metrics['n_patches'] * self.ppnet.num_classes))
-
         if len(metrics['pos_scores']) > 0 or len(metrics['neg_scores']) > 0:
             pred_scores = np.concatenate((np.array(metrics['pos_scores']), np.asarray(metrics['neg_scores'])))
             true_scores = np.concatenate((np.ones(len(metrics['pos_scores'])), np.zeros(len(metrics['neg_scores']))))
@@ -368,6 +366,9 @@ class PatchClassificationModule(LightningModule):
 
             f1 = 2 * (precision * recall) / (precision + recall)
             self.log(f'{split_key}/f1_score', f1)
+            self.log(f'{split_key}/accuracy', metrics['n_correct'] / (metrics['n_patches'] * self.ppnet.num_classes))
+        else:
+            self.log(f'{split_key}/accuracy', metrics['n_correct'] / metrics['n_patches'])
 
         self.log(f'{split_key}/separation_higher', metrics['separation_higher'] / metrics['n_patches'])
         self.log('l1', self.ppnet.last_layer.weight.norm(p=1).item())

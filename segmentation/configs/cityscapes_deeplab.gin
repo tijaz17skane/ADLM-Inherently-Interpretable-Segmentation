@@ -13,8 +13,8 @@ construct_PPNet.add_on_layers_type = 'bottleneck_pool'
 
 train.model_image_size = 1024
 train.random_seed = 20220227
-train.early_stopping_patience_main = 12
-train.early_stopping_patience_last_layer = 12
+train.early_stopping_patience_main = 20
+train.early_stopping_patience_last_layer = 20
 train.start_checkpoint = ''
 
 PatchClassificationDataset.mean = [0.28689554, 0.32513303, 0.28389177]
@@ -31,7 +31,7 @@ DataLoader.batch_size = 4
 
 Trainer.max_epochs = 1000
 
-PatchClassificationModule.num_warm_epochs = 5
+PatchClassificationModule.num_warm_epochs = 50
 
 # TODO find best weights?
 PatchClassificationModule.loss_weight_crs_ent = 0.5
@@ -51,12 +51,12 @@ PatchClassificationModule.warm_optimizer_weight_decay = 1e-4
 
 PatchClassificationModule.last_layer_optimizer_lr = 5e-4
 
-PatchClassificationModule.warmup_batches = 750
+PatchClassificationModule.warmup_batches = 3000
 PatchClassificationModule.gradient_clipping = 100
 
 ReduceLROnPlateau.mode = 'min'
 ReduceLROnPlateau.factor = 0.5
-ReduceLROnPlateau.patience = 4
+ReduceLROnPlateau.patience = 8
 ReduceLROnPlateau.min_lr = 1e-7
 
 PPNet.void_negative_weight = -0.1
