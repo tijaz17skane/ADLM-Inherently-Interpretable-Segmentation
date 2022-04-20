@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from deeplab_features import deeplabv3_resnet50_features
 from resnet_features import resnet18_features, resnet34_features, resnet50_features, resnet101_features, \
     resnet152_features
 from densenet_features import densenet121_features, densenet161_features, densenet169_features, densenet201_features
@@ -23,6 +24,7 @@ base_architecture_to_features = {'resnet18': resnet18_features,
                                  'densenet161': densenet161_features,
                                  'densenet169': densenet169_features,
                                  'densenet201': densenet201_features,
+                                 'deeplabv3_resnet50': deeplabv3_resnet50_features,
                                  'vgg11': vgg11_features,
                                  'vgg11_bn': vgg11_bn_features,
                                  'vgg13': vgg13_features,
@@ -84,6 +86,9 @@ class PPNet(nn.Module):
         elif features_name.startswith('DENSE'):
             first_add_on_layer_in_channels = \
                 [i for i in features.modules() if isinstance(i, nn.BatchNorm2d)][-1].num_features
+        elif features_name.startswith('DEEPLAB'):
+            first_add_on_layer_in_channels = \
+                [i for i in features.modules() if isinstance(i, nn.Conv2d)][-2].out_channels
         else:
             raise Exception('other base base_architecture NOT implemented')
 
@@ -215,12 +220,12 @@ class PPNet(nn.Module):
         '''
         # distances.shape = (batch_size, num_prototypes, n_patches_cols, n_patches_rows)
 
-        if self.patch_classification:
+        if hasattr(self, 'patch_classification') and self.patch_classification:
             # flatten to get predictions per patch
             batch_size, num_prototypes, n_patches_cols, n_patches_rows = distances.shape
 
             # shape: (batch_size, n_patches_cols, n_patches_rows, num_prototypes)
-            dist_view = distances.permute(0, 2, 3, 1)
+            dist_view = distances.permute(0, 2, 3, 1).contiguous()
             dist_view = dist_view.view(-1, num_prototypes)
             prototype_activations = self.distance_2_similarity(dist_view)
 

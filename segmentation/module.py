@@ -2,15 +2,13 @@
 Pytorch Lightning Module for training prototype segmentation model on Cityscapes and SUN datasets
 """
 import os
-import sys
-import traceback
 from typing import Dict, Optional
 
 import gin
 import numpy as np
 import torch
 from pytorch_lightning import LightningModule
-from sklearn.metrics import roc_auc_score, roc_curve, auc
+from sklearn.metrics import roc_auc_score
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from helpers import list_of_distances
@@ -144,22 +142,53 @@ class PatchClassificationModule(LightningModule):
         # target_flat = target.reshape(-1, target.shape[-1])
 
         output_flat = output.reshape(-1, output.shape[-1])
-        target_flat = target.reshape(-1, target.shape[-1])
 
-        # make positive targets have the same weights as negatives in each patch
-        n_neg = torch.sum(1-target_flat, dim=-1).unsqueeze(-1)
-        n_pos = torch.sum(target_flat, dim=-1).unsqueeze(-1)
+        if target.ndim > 3:
+            target_flat = target.reshape(-1, target.shape[-1])
 
-        pos_weight = n_neg / n_pos
-        neg_weight = n_pos / n_neg
+            # make positive targets have the same weights as negatives in each patch
+            n_neg = torch.sum(1 - target_flat, dim=-1).unsqueeze(-1)
+            n_pos = torch.sum(target_flat, dim=-1).unsqueeze(-1)
 
-        weight = pos_weight * target_flat + neg_weight * (1-target_flat)
+            pos_weight = n_neg / n_pos
+            neg_weight = n_pos / n_neg
 
-        cross_entropy = torch.nn.functional.binary_cross_entropy_with_logits(
-            output_flat,
-            target_flat,
-            weight=weight
-        )
+            weight = pos_weight * target_flat + neg_weight * (1 - target_flat)
+
+            cross_entropy = torch.nn.functional.binary_cross_entropy_with_logits(
+                output_flat,
+                target_flat,
+                weight=weight
+            )
+
+            output_sigmoid = torch.sigmoid(output_flat)
+            output_class = (output_sigmoid > 0.5).to(torch.float)
+            is_correct = output_class == target_flat
+
+            target_mask = target_flat.bool()
+
+            metrics['pos_scores'] += list(torch.masked_select(output_sigmoid, target_mask).cpu().detach().numpy())
+            metrics['neg_scores'] += list(torch.masked_select(output_sigmoid, ~target_mask).cpu().detach().numpy())
+
+            metrics['tp'] += torch.sum(is_correct * target_flat).item()
+            metrics['tn'] += torch.sum(is_correct * (1 - target_flat)).item()
+            metrics['fp'] += torch.sum(~is_correct * (1 - target_flat)).item()
+            metrics['fn'] += torch.sum(~is_correct * target_flat).item()
+
+            target_oh = target_flat
+        else:
+            target_flat = target.flatten()
+
+            cross_entropy = torch.nn.functional.cross_entropy(
+                output_flat,
+                target_flat.long(),
+            )
+
+            output_sigmoid = torch.softmax(output_flat, dim=-1)
+            output_class = torch.argmax(output_sigmoid, dim=-1)
+            is_correct = output_class == target_flat
+
+            target_oh = torch.nn.functional.one_hot(target_flat.long(), num_classes=self.ppnet.num_classes)
 
         l1_mask = 1 - torch.t(self.ppnet.prototype_class_identity).to(self.device)
         l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
@@ -169,21 +198,7 @@ class PatchClassificationModule(LightningModule):
         # evaluation statistics
         _, predicted = torch.max(output.data, 1)
 
-        output_sigmoid = torch.sigmoid(output_flat)
-        output_class = (output_sigmoid > 0.5).to(torch.float)
-
-        is_correct = output_class == target_flat
         metrics['n_correct'] += torch.sum(is_correct)
-
-        target_mask = target_flat.bool()
-
-        metrics['pos_scores'] += list(torch.masked_select(output_sigmoid, target_mask).cpu().detach().numpy())
-        metrics['neg_scores'] += list(torch.masked_select(output_sigmoid, ~target_mask).cpu().detach().numpy())
-
-        metrics['tp'] += torch.sum(is_correct * target_flat).item()
-        metrics['tn'] += torch.sum(is_correct * (1-target_flat)).item()
-        metrics['fp'] += torch.sum(~is_correct * (1-target_flat)).item()
-        metrics['fn'] += torch.sum(~is_correct * target_flat).item()
 
         metrics['n_batches'] += 1
         n_patches = output_flat.shape[0]
@@ -197,13 +212,13 @@ class PatchClassificationModule(LightningModule):
 
         # TODO maybe we can do it even smarter without the loop
         # ignore 'void' class in loop
-        for cls_i in range(1, target_flat.shape[1]):
+        for cls_i in range(1, target_oh.shape[1]):
             cls_dists = dist_flat[:, (cls_i - 1) * n_p_per_class:cls_i * n_p_per_class]
             min_cls_dists, _ = torch.min(cls_dists, dim=-1)
-            target_cls = target_flat[:, cls_i]
+            target_cls = target_oh[:, cls_i]
 
             # we want to minimize cluster_cost and maximize separation
-            separation.append((1-target_cls) * min_cls_dists + 512 * target_cls)
+            separation.append((1 - target_cls) * min_cls_dists + 512 * target_cls)
             cluster_cost.append(min_cls_dists * target_cls)
 
         # separation cost = minimum over distances to all classes that have score==0.0
@@ -331,29 +346,30 @@ class PatchClassificationModule(LightningModule):
 
         for key in ['loss', 'contrastive_loss', 'cross_entropy', 'cluster_cost', 'separation']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
-            
+
         self.log(f'{split_key}/accuracy', metrics['n_correct'] / (metrics['n_patches'] * self.ppnet.num_classes))
 
-        pred_scores = np.concatenate((np.array(metrics['pos_scores']), np.asarray(metrics['neg_scores'])))
-        true_scores = np.concatenate((np.ones(len(metrics['pos_scores'])), np.zeros(len(metrics['neg_scores']))))
-        true_scores = true_scores.astype(int)
+        if len(metrics['pos_scores']) > 0 or len(metrics['neg_scores']) > 0:
+            pred_scores = np.concatenate((np.array(metrics['pos_scores']), np.asarray(metrics['neg_scores'])))
+            true_scores = np.concatenate((np.ones(len(metrics['pos_scores'])), np.zeros(len(metrics['neg_scores']))))
+            true_scores = true_scores.astype(int)
 
-        auroc = roc_auc_score(true_scores, pred_scores)
+            auroc = roc_auc_score(true_scores, pred_scores)
 
-        self.log(f'{split_key}/auroc', auroc)
+            self.log(f'{split_key}/auroc', auroc)
+
+            pred_pos = metrics['tp'] + metrics['fp']
+            precision = metrics['tp'] / pred_pos if pred_pos != 0 else 1.0
+            self.log(f'{split_key}/precision', precision)
+
+            true_pos = metrics['tp'] + metrics['fn']
+            recall = metrics['tp'] / true_pos if true_pos != 0 else 1.0
+            self.log(f'{split_key}/recall', recall)
+
+            f1 = 2 * (precision * recall) / (precision + recall)
+            self.log(f'{split_key}/f1_score', f1)
+
         self.log(f'{split_key}/separation_higher', metrics['separation_higher'] / metrics['n_patches'])
-
-        pred_pos = metrics['tp'] + metrics['fp']
-        precision = metrics['tp'] / pred_pos if pred_pos != 0 else 1.0
-        self.log(f'{split_key}/precision', precision)
-
-        true_pos = metrics['tp'] + metrics['fn']
-        recall = metrics['tp'] / true_pos if true_pos != 0 else 1.0
-        self.log(f'{split_key}/recall', recall)
-
-        f1 = 2 * (precision * recall)/(precision + recall)
-        self.log(f'{split_key}/f1_score', f1)
-
         self.log('l1', self.ppnet.last_layer.weight.norm(p=1).item())
 
         p = self.ppnet.prototype_vectors.view(self.ppnet.num_prototypes, -1).cpu()

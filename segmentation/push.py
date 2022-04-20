@@ -99,7 +99,8 @@ def push_prototypes(dataloader,  # pytorch dataloader (must be unnormalized in [
                                    dir_for_saving_prototypes=proto_epoch_dir,
                                    prototype_img_filename_prefix=prototype_img_filename_prefix,
                                    prototype_self_act_filename_prefix=prototype_self_act_filename_prefix,
-                                   prototype_activation_function_in_numpy=prototype_activation_function_in_numpy)
+                                   prototype_activation_function_in_numpy=prototype_activation_function_in_numpy,
+                                   patch_size=dataloader.dataset.patch_size)
 
     if proto_epoch_dir != None and proto_bound_boxes_filename_prefix != None:
         np.save(os.path.join(proto_epoch_dir,
@@ -132,7 +133,8 @@ def update_prototypes_on_batch(search_batch_input,
                                dir_for_saving_prototypes=None,
                                prototype_img_filename_prefix=None,
                                prototype_self_act_filename_prefix=None,
-                               prototype_activation_function_in_numpy=None):
+                               prototype_activation_function_in_numpy=None,
+                               patch_size=64):
     if hasattr(prototype_network_parallel, 'module'):
         prototype_network_parallel = prototype_network_parallel.module
 
@@ -221,7 +223,6 @@ def update_prototypes_on_batch(search_batch_input,
             # batch_argmin_proto_dist, protoL_rf_info)
 
             # TODO patch size - not hardcoded
-            patch_size = 64
             rf_start_h_index, rf_end_h_index = batch_argmin_proto_dist[1] * patch_size, \
                                                (batch_argmin_proto_dist[1] + 1) * patch_size
             rf_start_w_index, rf_end_w_index = batch_argmin_proto_dist[2] * patch_size, \

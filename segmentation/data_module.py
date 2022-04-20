@@ -25,10 +25,12 @@ class PatchClassificationDataModule(LightningDataModule):
             self,
             model_image_size: int,
             dataloader_n_jobs: int = gin.REQUIRED,
+            push_length_multiplier: int = 1,
     ):
         super().__init__()
         self.dataloader_n_jobs = dataloader_n_jobs if dataloader_n_jobs != -1 else multiprocessing.cpu_count()
         self.model_image_size = model_image_size
+        self.push_length_multiplier = push_length_multiplier
 
     def prepare_data(self):
         if not os.path.exists(os.path.join(data_path, 'annotations')):
@@ -70,6 +72,7 @@ class PatchClassificationDataModule(LightningDataModule):
             split_key='train',
             is_eval=True,
             model_image_size=self.model_image_size,
-            push_prototypes=True
+            push_prototypes=True,
+            length_multiplier=self.push_length_multiplier
         )
         return self.get_data_loader(train_split)

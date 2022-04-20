@@ -2,7 +2,7 @@
 Dataset for training prototype patch classification model on Cityscapes and SUN datasets
 """
 import json
-from typing import Any, List
+from typing import Any, List, Optional, Tuple
 from tqdm import tqdm
 
 import torch
@@ -16,7 +16,8 @@ from settings import data_path, log
 import numpy as np
 
 
-@gin.configurable(allowlist=['mean', 'std', 'transpose_ann', 'image_margin_size', 'patch_size', 'num_classes'])
+@gin.configurable(allowlist=['mean', 'std', 'transpose_ann', 'image_margin_size', 'patch_size', 'num_classes',
+                             'window_size'])
 class PatchClassificationDataset(VisionDataset):
     def __init__(
             self,
@@ -29,8 +30,11 @@ class PatchClassificationDataset(VisionDataset):
             transpose_ann: bool = gin.REQUIRED,
             image_margin_size: int = gin.REQUIRED,
             patch_size: float = gin.REQUIRED,
-            num_classes: float = gin.REQUIRED
+            num_classes: float = gin.REQUIRED,
+            length_multiplier: int = 1,
+            window_size: Optional[Tuple[float, float]] = None
     ):
+        self.length_multiplier = length_multiplier
         self.mean = mean
         self.std = std
         self.model_image_size = model_image_size
@@ -42,6 +46,7 @@ class PatchClassificationDataset(VisionDataset):
         self.image_margin_size = image_margin_size
         self.patch_size = patch_size
         self.num_classes = num_classes
+        self.window_size = window_size
 
         # we generated cityscapes images with max margin earlier
         self.img_dir = os.path.join(data_path, f'img_with_margin_{self.image_margin_size}/{split_key}')
@@ -80,7 +85,7 @@ class PatchClassificationDataset(VisionDataset):
         self.cached_img_id = None
 
     def __len__(self) -> int:
-        return len(self.img_ids)
+        return len(self.img_ids) * self.length_multiplier
 
     def get_img_path(self, img_id: str) -> str:
         return os.path.join(self.img_dir, img_id + '.png')
@@ -130,6 +135,7 @@ class PatchClassificationDataset(VisionDataset):
 
     def __getitem__(self, index: int) -> Any:
         try:
+            index = int(index / self.length_multiplier)
             img_id = self.img_ids[index]
             img, ann = self._load_img_and_ann(index, img_id)
 
@@ -187,39 +193,49 @@ class PatchClassificationDataset(VisionDataset):
 
             img = torch.tensor(img).permute(2, 0, 1) / 256
 
+            if self.window_size is not None:
+                window_left = np.random.randint(0, target.shape[0] - self.window_size[0])
+                window_top = np.random.randint(0, target.shape[1] - self.window_size[1])
+                window_right = window_left + self.window_size[0]
+                window_bottom = window_top + self.window_size[1]
+
+                img = img[:, window_left:window_right, window_top:window_bottom]
+                target = target[window_left:window_right, window_top:window_bottom]
+
             # Random horizontal flip
             if not self.is_eval and np.random.random() > 0.5:
                 target = np.flip(target, axis=1)
                 img = torch.flip(img, [2])
 
-            # Get target as a distribution of classes per patch
-            n_target_rows, n_target_cols = int(img.shape[1] / self.patch_size), int(img.shape[2] / self.patch_size)
+            if self.patch_size > 1:
+                # Get target as a distribution of classes per patch
+                n_target_rows, n_target_cols = int(img.shape[1] / self.patch_size), int(img.shape[2] / self.patch_size)
 
-            target_dist = np.full((n_target_rows, n_target_cols, self.num_classes), fill_value=0.0)
+                target_dist = np.full((n_target_rows, n_target_cols, self.num_classes), fill_value=0.0)
 
-            for i in range(n_target_rows):
-                for j in range(n_target_cols):
-                    patch_classes = target[i * self.patch_size:(i + 1) * self.patch_size,
-                                           j * self.patch_size:(j + 1) * self.patch_size]
+                for i in range(n_target_rows):
+                    for j in range(n_target_cols):
+                        patch_classes = target[i * self.patch_size:(i + 1) * self.patch_size,
+                                               j * self.patch_size:(j + 1) * self.patch_size]
 
-                    # uncomment for distribution
-                    # unique, counts = np.unique(patch_classes.flatten(), return_counts=True)
-                    # pixels_in_patch = patch_classes.size
-                    # for n, c in zip(unique, counts):
-                    # target_dist[i, j, n] = c / pixels_in_patch
+                        # uncomment for distribution
+                        # unique, counts = np.unique(patch_classes.flatten(), return_counts=True)
+                        # pixels_in_patch = patch_classes.size
+                        # for n, c in zip(unique, counts):
+                        # target_dist[i, j, n] = c / pixels_in_patch
 
-                    # multi-label classification
-                    for n in np.unique(patch_classes):
-                        target_dist[i, j, n] = 1.0
+                        # multi-label classification
+                        for n in np.unique(patch_classes):
+                            target_dist[i, j, n] = 1.0
 
-            target = target_dist
+                target = target_dist
 
             if self.transform is not None:
                 img = self.transform(img)
             if self.target_transform is not None:
                 target = self.target_transform(target)
 
-            return img, target
+            return img, target.copy()
         except Exception as e:
             raise e
             # TODO catch errors
