@@ -164,9 +164,12 @@ def update_prototypes_on_batch(search_batch_input,
     for img_index, img_y in enumerate(search_y):
         for proto_i in range(img_y.shape[0]):
             for proto_j in range(img_y.shape[1]):
-                for cls_i, cls_prob in enumerate(img_y[proto_i, proto_j]):
-                    if cls_prob > 0:
-                        class_to_img_index_dict[cls_i].append((img_index, proto_i, proto_j))
+                if img_y.ndim == 2:
+                    class_to_img_index_dict[int(img_y[proto_i, proto_j].item())].append((img_index, proto_i, proto_j))
+                else:
+                    for cls_i, cls_prob in enumerate(img_y[proto_i, proto_j]):
+                        if cls_prob > 0:
+                            class_to_img_index_dict[cls_i].append((img_index, proto_i, proto_j))
 
     prototype_shape = prototype_network_parallel.prototype_shape
     n_prototypes = prototype_shape[0]
@@ -300,7 +303,8 @@ def update_prototypes_on_batch(search_batch_input,
                                vmin=0.0,
                                vmax=1.0)
 
-                    plt.figure(figsize=(20.48, 10.24))  # for 100 DPI
+                    # plt.figure(figsize=(20.48, 10.24))  # for 100 DPI
+                    plt.figure(figsize=(2.56, 2.56))  # for 100 DPI
                     plt.imshow(original_img_j)
                     plt.plot([rf_start_w_index, rf_start_w_index], [rf_start_h_index, rf_end_h_index],
                              [rf_end_w_index, rf_end_w_index], [rf_start_h_index, rf_end_h_index],
@@ -329,7 +333,8 @@ def update_prototypes_on_batch(search_batch_input,
                                vmin=0.0,
                                vmax=1.0)
 
-                    plt.figure(figsize=(20.48, 10.24))  # for 100 DPI
+                    # plt.figure(figsize=(20.48, 10.24))  # for 100 DPI
+                    plt.figure(figsize=(2.56, 2.56))  # for 100 DPI
                     plt.imshow(overlayed_original_img_j)
                     plt.plot([rf_start_w_index, rf_start_w_index], [rf_start_h_index, rf_end_h_index],
                              [rf_end_w_index, rf_end_w_index], [rf_start_h_index, rf_end_h_index],
