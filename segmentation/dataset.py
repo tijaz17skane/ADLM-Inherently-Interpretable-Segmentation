@@ -23,7 +23,7 @@ class PatchClassificationDataset(VisionDataset):
             self,
             split_key: str,
             is_eval: bool,
-            model_image_size: int,
+            model_image_size: int, # TODO this is unused, delete
             push_prototypes: bool = False,
             mean: List[float] = gin.REQUIRED,
             std: List[float] = gin.REQUIRED,

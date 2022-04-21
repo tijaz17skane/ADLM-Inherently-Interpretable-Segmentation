@@ -6,8 +6,8 @@ construct_PPNet.base_architecture = 'deeplabv3_resnet50'
 construct_PPNet.pretrained = True
 
 # (number of classes - 1) * 10, because class 0 ('void') has no prototypes
-construct_PPNet.prototype_shape = (280, 256, 1, 1)
-construct_PPNet.num_classes = 29
+construct_PPNet.prototype_shape = (370, 256, 1, 1)
+construct_PPNet.num_classes = 38
 construct_PPNet.prototype_activation_function = 'log'
 construct_PPNet.add_on_layers_type = 'bottleneck_pool'
 
@@ -17,12 +17,12 @@ train.early_stopping_patience_main = 20
 train.early_stopping_patience_last_layer = 20
 train.start_checkpoint = ''
 
-PatchClassificationDataset.mean = [0.28689554, 0.32513303, 0.28389177]
-PatchClassificationDataset.std = [0.18696375, 0.19017339, 0.18720214]
-PatchClassificationDataset.transpose_ann = False
-PatchClassificationDataset.image_margin_size = 512
+PatchClassificationDataset.mean = [0.496, 0.463, 0.438]
+PatchClassificationDataset.std = [0.228, 0.232, 0.231]
+PatchClassificationDataset.transpose_ann = True
+PatchClassificationDataset.image_margin_size = 112
 PatchClassificationDataset.patch_size = 1
-PatchClassificationDataset.num_classes = 29
+PatchClassificationDataset.num_classes = 38
 PatchClassificationDataset.window_size = (256, 256)
 
 PatchClassificationDataModule.push_length_multiplier = 32
