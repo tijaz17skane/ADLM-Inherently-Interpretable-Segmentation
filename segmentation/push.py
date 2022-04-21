@@ -349,18 +349,20 @@ def update_prototypes_on_batch(search_batch_input,
                                              prototype_img_filename_prefix + f'_{j}-original_with_self_act_and_box.png'))
                     plt.close()
 
-                    plt.imsave(os.path.join(dir_for_saving_prototypes,
-                                            prototype_img_filename_prefix + f'_{j}-receptive_field.png'),
-                               rf_img_j,
-                               vmin=0.0,
-                               vmax=1.0)
-                    overlayed_rf_img_j = overlayed_original_img_j[rf_prototype_j[1]:rf_prototype_j[2],
-                                         rf_prototype_j[3]:rf_prototype_j[4]]
-                    plt.imsave(os.path.join(dir_for_saving_prototypes,
-                                            prototype_img_filename_prefix + f'_{j}-receptive_field_with_self_act.png'),
-                               overlayed_rf_img_j,
-                               vmin=0.0,
-                               vmax=1.0)
+                    if img_y.ndim > 2:
+                        plt.imsave(os.path.join(dir_for_saving_prototypes,
+                                                prototype_img_filename_prefix + f'_{j}-receptive_field.png'),
+                                   rf_img_j,
+                                   vmin=0.0,
+                                   vmax=1.0)
+                        overlayed_rf_img_j = overlayed_original_img_j[rf_prototype_j[1]:rf_prototype_j[2],
+                                             rf_prototype_j[3]:rf_prototype_j[4]]
+                        plt.imsave(os.path.join(dir_for_saving_prototypes,
+                                                prototype_img_filename_prefix
+                                                + f'_{j}-receptive_field_with_self_act.png'),
+                                   overlayed_rf_img_j,
+                                   vmin=0.0,
+                                   vmax=1.0)
 
                     # save the prototype image (highly activated region of the whole image)
                     plt.imsave(os.path.join(dir_for_saving_prototypes,
