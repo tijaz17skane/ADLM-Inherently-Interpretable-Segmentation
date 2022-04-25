@@ -35,14 +35,15 @@ base_architecture_to_features = {'resnet18': resnet18_features,
                                  'vgg19_bn': vgg19_bn_features}
 
 
-@gin.configurable(allowlist=['void_negative_weight', 'bottleneck_stride', 'patch_classification'])
+@gin.configurable(allowlist=['void_negative_weight', 'bottleneck_stride', 'patch_classification', 'void_class'])
 class PPNet(nn.Module):
     def __init__(self, features, img_size, prototype_shape,
                  proto_layer_rf_info, num_classes, init_weights=True,
                  prototype_activation_function='log',
                  add_on_layers_type='bottleneck',
-                 void_negative_weight: float = gin.REQUIRED,
+                 void_negative_weight: Optional[float] = gin.REQUIRED,
                  bottleneck_stride: Optional[int] = None,
+                 void_class: bool = True,
                  patch_classification: bool = False):
 
         super(PPNet, self).__init__()
@@ -54,6 +55,7 @@ class PPNet(nn.Module):
         self.void_negative_weight = void_negative_weight
         self.bottleneck_stride = bottleneck_stride
         self.patch_classification = patch_classification
+        self.void_class = void_class
 
         # prototype_activation_function could be 'log', 'linear',
         # or a generic function that converts distance to similarity score
@@ -64,15 +66,26 @@ class PPNet(nn.Module):
         Without domain specific knowledge we allocate the same number of
         prototypes for each class
         '''
-        assert self.num_prototypes % (self.num_classes - 1) == 0
+        if self.void_class:
+            assert self.num_prototypes % (self.num_classes - 1) == 0
 
-        # a onehot indication matrix for each prototype's class identity
-        self.prototype_class_identity = torch.zeros(self.num_prototypes,
-                                                    self.num_classes)
+            # a onehot indication matrix for each prototype's class identity
+            self.prototype_class_identity = torch.zeros(self.num_prototypes,
+                                                        self.num_classes)
 
-        num_prototypes_per_class = self.num_prototypes // (self.num_classes - 1)
-        for i in range(1, self.num_classes):
-            self.prototype_class_identity[(i - 1) * num_prototypes_per_class:i * num_prototypes_per_class, i] = 1
+            num_prototypes_per_class = self.num_prototypes // (self.num_classes - 1)
+            for i in range(1, self.num_classes):
+                self.prototype_class_identity[(i - 1) * num_prototypes_per_class:i * num_prototypes_per_class, i] = 1
+        else:
+            assert self.num_prototypes % self.num_classes == 0
+
+            # a onehot indication matrix for each prototype's class identity
+            self.prototype_class_identity = torch.zeros(self.num_prototypes,
+                                                        self.num_classes)
+
+            num_prototypes_per_class = self.num_prototypes // self.num_classes
+            for i in range(self.num_classes):
+                self.prototype_class_identity[i * num_prototypes_per_class:(i+1) * num_prototypes_per_class, i] = 1
 
         self.proto_layer_rf_info = proto_layer_rf_info
 
@@ -317,8 +330,9 @@ class PPNet(nn.Module):
             correct_class_connection * positive_one_weights_locations
             + incorrect_class_connection * negative_one_weights_locations)
 
-        # set weight of prototypes to void class
-        self.last_layer.weight.data[0] = self.void_negative_weight
+        if self.void_class:
+            # set weight of prototypes to void class
+            self.last_layer.weight.data[0] = self.void_negative_weight
 
     def _initialize_weights(self):
         for m in self.add_on_layers.modules():

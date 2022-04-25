@@ -78,7 +78,8 @@ class PatchClassificationModule(LightningModule):
             warm_optimizer_weight_decay: float = gin.REQUIRED,
             last_layer_optimizer_lr: float = gin.REQUIRED,
             warmup_batches: int = gin.REQUIRED,
-            gradient_clipping: Optional[float] = gin.REQUIRED
+            gradient_clipping: Optional[float] = gin.REQUIRED,
+            ignore_void_class: bool = False
     ):
         super().__init__()
         self.model_dir = model_dir
@@ -103,6 +104,7 @@ class PatchClassificationModule(LightningModule):
         self.last_layer_optimizer_lr = last_layer_optimizer_lr
         self.warmup_batches = warmup_batches
         self.gradient_clipping = gradient_clipping
+        self.ignore_void_class = ignore_void_class
 
         os.makedirs(self.prototypes_dir, exist_ok=True)
         os.makedirs(self.checkpoints_dir, exist_ok=True)
@@ -142,6 +144,7 @@ class PatchClassificationModule(LightningModule):
         # target_flat = target.reshape(-1, target.shape[-1])
 
         output_flat = output.reshape(-1, output.shape[-1])
+        dist_flat = patch_distances.permute(0, 2, 3, 1).reshape(-1, patch_distances.shape[1])
 
         if target.ndim > 3:
             target_flat = target.reshape(-1, target.shape[-1])
@@ -179,6 +182,12 @@ class PatchClassificationModule(LightningModule):
         else:
             target_flat = target.flatten()
 
+            if self.ignore_void_class:
+                target_not_void = (target_flat != 0).nonzero().squeeze()
+                target_flat = target_flat[target_not_void] - 1
+                output_flat = output_flat[target_not_void]
+                dist_flat = dist_flat[target_not_void]
+
             cross_entropy = torch.nn.functional.cross_entropy(
                 output_flat,
                 target_flat.long(),
@@ -193,21 +202,11 @@ class PatchClassificationModule(LightningModule):
         l1_mask = 1 - torch.t(self.ppnet.prototype_class_identity).to(self.device)
         l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
 
-        metrics['n_examples'] += target.size(0)
-
-        # evaluation statistics
-        _, predicted = torch.max(output.data, 1)
-
-        metrics['n_correct'] += torch.sum(is_correct)
-
         metrics['n_batches'] += 1
-        n_patches = output_flat.shape[0]
-        metrics['n_patches'] += n_patches
-        metrics['cross_entropy'] += cross_entropy.item()
 
         # calculate cluster and separation losses
         separation, cluster_cost = [], []
-        dist_flat = patch_distances.permute(0, 2, 3, 1).reshape(-1, patch_distances.shape[1])
+
         n_p_per_class = self.ppnet.num_prototypes // (self.ppnet.num_classes - 1)
 
         # TODO maybe we can do it even smarter without the loop
@@ -233,7 +232,6 @@ class PatchClassificationModule(LightningModule):
         contrastive_input = torch.stack((cluster_cost, separation), dim=-1)
         contrastive_target = torch.ones(contrastive_input.shape[0], device=contrastive_input.device, dtype=torch.long)
         contrastive_loss = torch.nn.functional.cross_entropy(contrastive_input, contrastive_target)
-        metrics['separation_higher'] += torch.sum(separation > cluster_cost).item()
 
         cluster_cost = torch.mean(cluster_cost)
         separation = torch.mean(separation)
@@ -245,10 +243,18 @@ class PatchClassificationModule(LightningModule):
                 self.loss_weight_l1 * l1)
 
         loss_value = loss.item()
-        metrics['loss'] += loss_value
-        metrics['contrastive_loss'] += contrastive_loss.item()
-        metrics['cluster_cost'] += cluster_cost.item()
-        metrics['separation'] += separation.item()
+
+        if not np.isnan(loss_value):
+            metrics['loss'] += loss_value
+            metrics['cross_entropy'] += cross_entropy.item()
+            metrics['contrastive_loss'] += contrastive_loss.item()
+            metrics['cluster_cost'] += cluster_cost.item()
+            metrics['separation'] += separation.item()
+            metrics['separation_higher'] += torch.sum(separation > cluster_cost).item()
+            metrics['n_examples'] += target_flat.size(0)
+            metrics['n_correct'] += torch.sum(is_correct)
+            n_patches = output_flat.shape[0]
+            metrics['n_patches'] += n_patches
 
         if split_key == 'train':
             warm_optim, main_optim = self.optimizers()
