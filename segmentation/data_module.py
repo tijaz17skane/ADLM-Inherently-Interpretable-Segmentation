@@ -36,38 +36,39 @@ class PatchClassificationDataModule(LightningDataModule):
         if not os.path.exists(os.path.join(data_path, 'annotations')):
             raise ValueError("Please download dataset and preprocess it using 'preprocess.py' script")
 
-    def get_data_loader(self, dataset: PatchClassificationDataset) -> DataLoader:
+    def get_data_loader(self, dataset: PatchClassificationDataset, **kwargs) -> DataLoader:
         return DataLoader(
             dataset=dataset,
             shuffle=not dataset.is_eval,
             num_workers=self.dataloader_n_jobs,
+            **kwargs
         )
 
-    def train_dataloader(self):
+    def train_dataloader(self, **kwargs):
         train_split = PatchClassificationDataset(
             split_key='train',
             is_eval=False,
             model_image_size=self.model_image_size
         )
-        return self.get_data_loader(train_split)
+        return self.get_data_loader(train_split, **kwargs)
 
-    def val_dataloader(self):
+    def val_dataloader(self, **kwargs):
         val_split = PatchClassificationDataset(
             split_key='val',
             is_eval=True,
             model_image_size=self.model_image_size
         )
-        return self.get_data_loader(val_split)
+        return self.get_data_loader(val_split, **kwargs)
 
-    def test_dataloader(self):
+    def test_dataloader(self, **kwargs):
         test_split = PatchClassificationDataset(
             split_key='val',  # We do not have test set for cityscapes
             is_eval=True,
             model_image_size=self.model_image_size
         )
-        return self.get_data_loader(test_split)
+        return self.get_data_loader(test_split, **kwargs)
 
-    def train_push_dataloader(self):
+    def train_push_dataloader(self, **kwargs):
         train_split = PatchClassificationDataset(
             split_key='train',
             is_eval=True,
@@ -75,4 +76,4 @@ class PatchClassificationDataModule(LightningDataModule):
             push_prototypes=True,
             length_multiplier=self.push_length_multiplier
         )
-        return self.get_data_loader(train_split)
+        return self.get_data_loader(train_split, **kwargs)
