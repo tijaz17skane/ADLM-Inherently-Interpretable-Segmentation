@@ -120,6 +120,10 @@ def find_k_nearest_patches_to_prototypes(dataloader, # pytorch dataloader (must 
                     closest_patch = closest_patch.numpy()
                     closest_patch = np.transpose(closest_patch, (1, 2, 0))
 
+                    # ignore empty patches
+                    if closest_patch.size == 0:
+                        continue
+
                     original_img = search_batch_input[img_idx].numpy()
                     original_img = np.transpose(original_img, (1, 2, 0))
 

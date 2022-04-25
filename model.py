@@ -213,7 +213,11 @@ class PPNet(nn.Module):
             return self.prototype_activation_function(distances)
 
     def forward(self, x):
-        distances = self.prototype_distances(x)
+        conv_features = self.conv_features(x)
+        return self.forward_from_conv_features(conv_features)
+
+    def forward_from_conv_features(self, conv_features):
+        distances = self._l2_convolution(conv_features)
         '''
         we cannot refactor the lines below for similarity scores
         because we need to return min_distances
