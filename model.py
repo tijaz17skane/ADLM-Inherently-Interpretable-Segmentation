@@ -353,6 +353,7 @@ def construct_PPNet(
                                                          layer_strides=layer_strides,
                                                          layer_paddings=layer_paddings,
                                                          prototype_kernel_size=prototype_shape[2])
+
     return PPNet(features=features,
                  img_size=img_size,
                  prototype_shape=prototype_shape,

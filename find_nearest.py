@@ -113,6 +113,16 @@ def find_k_nearest_patches_to_prototypes(dataloader, # pytorch dataloader (must 
                         compute_rf_prototype(search_batch.size(2),
                                              closest_patch_indices_in_distance_map_j,
                                              protoL_rf_info)
+
+                    # TODO - un-hardcode
+                    closest_patch_indices_in_img = \
+                        [
+                            0,
+                            max(closest_patch_indices_in_distance_map_j[1] - 1, 0),
+                            min(closest_patch_indices_in_distance_map_j[1] + 1, 255),
+                            max(closest_patch_indices_in_distance_map_j[2] - 1, 0),
+                            min(closest_patch_indices_in_distance_map_j[2] + 1, 255)
+                        ]
                     closest_patch = \
                         search_batch_input[img_idx, :,
                                            closest_patch_indices_in_img[1]:closest_patch_indices_in_img[2],
@@ -185,7 +195,15 @@ def find_k_nearest_patches_to_prototypes(dataloader, # pytorch dataloader (must 
                            arr=patch.original_img,
                            vmin=0.0,
                            vmax=1.0)
-                
+
+                imsave_with_bbox(fname=os.path.join(dir_for_saving_images,
+                                                    'nearest-' + str(i+1) + '_original_with_pixel.png'),
+                                 img_rgb=patch.original_img,
+                                 bbox_height_start=patch.patch_indices[0],
+                                 bbox_height_end=patch.patch_indices[1],
+                                 bbox_width_start=patch.patch_indices[2],
+                                 bbox_width_end=patch.patch_indices[3], color=(0, 255, 255))
+
                 # overlay (upsampled) activation on original image and save the result
                 img_size = patch.original_img.shape[0]
                 upsampled_act_pattern = cv2.resize(patch.act_pattern,
@@ -202,25 +220,33 @@ def find_k_nearest_patches_to_prototypes(dataloader, # pytorch dataloader (must 
                            arr=overlayed_original_img,
                            vmin=0.0,
                            vmax=1.0)
-                
+
+                imsave_with_bbox(fname=os.path.join(dir_for_saving_images,
+                                                    'nearest-' + str(i+1) + '_original_with_heatmap_and_pixel.png'),
+                                 img_rgb=overlayed_original_img,
+                                 bbox_height_start=patch.patch_indices[0],
+                                 bbox_height_end=patch.patch_indices[1],
+                                 bbox_width_start=patch.patch_indices[2],
+                                 bbox_width_end=patch.patch_indices[3], color=(0, 255, 255))
+
                 # if different from original image, save the patch (i.e. receptive field)
-                if patch.patch.shape[0] != img_size or patch.patch.shape[1] != img_size:
-                    np.save(os.path.join(dir_for_saving_images,
-                                         'nearest-' + str(i+1) + '_receptive_field_indices.npy'),
-                            patch.patch_indices)
-                    plt.imsave(fname=os.path.join(dir_for_saving_images,
-                                              'nearest-' + str(i+1) + '_receptive_field.png'),
-                               arr=patch.patch,
-                               vmin=0.0,
-                               vmax=1.0)
-                    # save the receptive field patch with heatmap
-                    overlayed_patch = overlayed_original_img[patch.patch_indices[0]:patch.patch_indices[1],
-                                                             patch.patch_indices[2]:patch.patch_indices[3], :]
-                    plt.imsave(fname=os.path.join(dir_for_saving_images,
-                                              'nearest-' + str(i+1) + '_receptive_field_with_heatmap.png'),
-                               arr=overlayed_patch,
-                               vmin=0.0,
-                               vmax=1.0)
+                # if patch.patch.shape[0] != img_size or patch.patch.shape[1] != img_size:
+                    # np.save(os.path.join(dir_for_saving_images,
+                                         # 'nearest-' + str(i+1) + '_receptive_field_indices.npy'),
+                            # patch.patch_indices)
+                    # plt.imsave(fname=os.path.join(dir_for_saving_images,
+                                              # 'nearest-' + str(i+1) + '_receptive_field.png'),
+                               # arr=patch.patch,
+                               # vmin=0.0,
+                               # vmax=1.0)
+                    # # save the receptive field patch with heatmap
+                    # overlayed_patch = overlayed_original_img[patch.patch_indices[0]:patch.patch_indices[1],
+                                                             # patch.patch_indices[2]:patch.patch_indices[3], :]
+                    # plt.imsave(fname=os.path.join(dir_for_saving_images,
+                                              # 'nearest-' + str(i+1) + '_receptive_field_with_heatmap.png'),
+                               # arr=overlayed_patch,
+                               # vmin=0.0,
+                               # vmax=1.0)
                     
                 # save the highly activated patch    
                 high_act_patch_indices = find_high_activation_crop(upsampled_act_pattern)
@@ -234,6 +260,7 @@ def find_k_nearest_patches_to_prototypes(dataloader, # pytorch dataloader (must 
                            arr=high_act_patch,
                            vmin=0.0,
                            vmax=1.0)
+
                 # save the original image with bounding box showing high activation patch
                 imsave_with_bbox(fname=os.path.join(dir_for_saving_images,
                                        'nearest-' + str(i+1) + '_high_act_patch_in_original_img.png'),
