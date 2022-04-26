@@ -77,8 +77,8 @@ def push_prototypes(dataloader,  # pytorch dataloader (must be unnormalized in [
     num_classes = prototype_network_parallel.num_classes
 
     # for model that ignores void class
-    if (hasattr(prototype_network_parallel.module, 'void_class') and
-            not prototype_network_parallel.module.void_class):
+    if (hasattr(prototype_network_parallel, 'void_class') and
+            not prototype_network_parallel.void_class):
         num_classes = num_classes + 1
 
     log(f'Updating prototypes...')
@@ -189,8 +189,8 @@ def update_prototypes_on_batch(search_batch_input,
         target_class = torch.argmax(prototype_network_parallel.prototype_class_identity[j]).item()
 
         # for model that ignores void class (no prototypes for void class)
-        if (hasattr(prototype_network_parallel.module, 'void_class') and
-                not prototype_network_parallel.module.void_class):
+        if (hasattr(prototype_network_parallel, 'void_class') and
+                not prototype_network_parallel.void_class):
             target_class = target_class + 1
 
         # if there is not images of the target_class from this batch
