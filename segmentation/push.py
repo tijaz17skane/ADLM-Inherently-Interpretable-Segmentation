@@ -76,6 +76,11 @@ def push_prototypes(dataloader,  # pytorch dataloader (must be unnormalized in [
 
     num_classes = prototype_network_parallel.num_classes
 
+    # for model that ignores void class
+    if (hasattr(prototype_network_parallel.module, 'void_class') and
+            not prototype_network_parallel.module.void_class):
+        num_classes = num_classes + 1
+
     log(f'Updating prototypes...')
     for push_iter, (search_batch_input, search_y) in tqdm(enumerate(dataloader),
                                                           desc='updating prototypes', total=len(dataloader)):
@@ -165,7 +170,9 @@ def update_prototypes_on_batch(search_batch_input,
         for proto_i in range(img_y.shape[0]):
             for proto_j in range(img_y.shape[1]):
                 if img_y.ndim == 2:
-                    class_to_img_index_dict[int(img_y[proto_i, proto_j].item())].append((img_index, proto_i, proto_j))
+                    pixel_cls = int(img_y[proto_i, proto_j].item())
+
+                    class_to_img_index_dict[pixel_cls].append((img_index, proto_i, proto_j))
                 else:
                     for cls_i, cls_prob in enumerate(img_y[proto_i, proto_j]):
                         if cls_prob > 0:
@@ -180,6 +187,12 @@ def update_prototypes_on_batch(search_batch_input,
     for j in range(n_prototypes):
         # target_class is the class of the class_specific prototype
         target_class = torch.argmax(prototype_network_parallel.prototype_class_identity[j]).item()
+
+        # for model that ignores void class (no prototypes for void class)
+        if (hasattr(prototype_network_parallel.module, 'void_class') and
+                not prototype_network_parallel.module.void_class):
+            target_class = target_class + 1
+
         # if there is not images of the target_class from this batch
         # we go on to the next prototype
         if len(class_to_img_index_dict[target_class]) == 0:
