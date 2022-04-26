@@ -37,7 +37,8 @@ def prune_prototypes(dataloader,
         class_j = torch.argmax(prototype_network_parallel.module.prototype_class_identity[j]).item()
 
         # for model that ignores void class
-        if not prototype_network_parallel.module.void_class:
+        if not (hasattr(prototype_network_parallel.module, 'void_class') and
+                prototype_network_parallel.module.void_class):
             class_j = class_j + 1
 
         nearest_train_patch_class_counts_j = Counter(nearest_train_patch_class_ids[j])
