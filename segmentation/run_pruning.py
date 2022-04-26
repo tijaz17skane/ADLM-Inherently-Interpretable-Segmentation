@@ -70,7 +70,7 @@ def run_pruning(config_name: str, experiment_name: str, k: int = 6, prune_thresh
 
     save.save_model_w_condition(model=ppnet, model_dir=output_dir,
                                 model_name='pruned',
-                                accu=0.0,
+                                accu=1.0,
                                 target_accu=0.0, log=log)
     logclose()
 

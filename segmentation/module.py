@@ -207,12 +207,22 @@ class PatchClassificationModule(LightningModule):
         # calculate cluster and separation losses
         separation, cluster_cost = [], []
 
-        n_p_per_class = self.ppnet.num_prototypes // (self.ppnet.num_classes - 1)
+        if self.ignore_void_class:
+            n_p_per_class = self.ppnet.num_prototypes // self.ppnet.num_classes
+        else:
+            n_p_per_class = self.ppnet.num_prototypes // (self.ppnet.num_classes - 1)
 
         # TODO maybe we can do it even smarter without the loop
-        # ignore 'void' class in loop
-        for cls_i in range(1, target_oh.shape[1]):
-            cls_dists = dist_flat[:, (cls_i - 1) * n_p_per_class:cls_i * n_p_per_class]
+        for cls_i in range(target_oh.shape[1]):
+            if cls_i == 0 and not self.ignore_void_class:
+                # ignore 'void' class in loop
+                continue
+
+            if self.ignore_void_class:
+                cls_dists = dist_flat[:, cls_i * n_p_per_class:(cls_i + 1) * n_p_per_class]
+            else:
+                cls_dists = dist_flat[:, (cls_i - 1) * n_p_per_class:cls_i * n_p_per_class]
+
             min_cls_dists, _ = torch.min(cls_dists, dim=-1)
             target_cls = target_oh[:, cls_i]
 
