@@ -243,6 +243,7 @@ class PatchClassificationModule(LightningModule):
         contrastive_target = torch.ones(contrastive_input.shape[0], device=contrastive_input.device, dtype=torch.long)
         contrastive_loss = torch.nn.functional.cross_entropy(contrastive_input, contrastive_target)
 
+        separation_higher = torch.sum(separation > cluster_cost)
         cluster_cost = torch.mean(cluster_cost)
         separation = torch.mean(separation)
 
@@ -260,7 +261,7 @@ class PatchClassificationModule(LightningModule):
             metrics['contrastive_loss'] += contrastive_loss.item()
             metrics['cluster_cost'] += cluster_cost.item()
             metrics['separation'] += separation.item()
-            metrics['separation_higher'] += torch.sum(separation > cluster_cost).item()
+            metrics['separation_higher'] += separation_higher.item()
             metrics['n_examples'] += target_flat.size(0)
             metrics['n_correct'] += torch.sum(is_correct)
             n_patches = output_flat.shape[0]
