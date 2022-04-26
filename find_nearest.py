@@ -82,15 +82,8 @@ def find_k_nearest_patches_to_prototypes(dataloader,  # pytorch dataloader (must
         # a heap in python is just a maintained list
         heaps.append([])
 
-    # TODO test
-    iii = 0
-
     for idx, (search_batch_input, search_y) in tqdm(enumerate(dataloader), desc='finding nearest patches',
                                                     total=len(dataloader)):
-        iii += 1
-        if iii > 50:
-            break
-
         if preprocess_input_function is not None:
             # print('preprocessing input for pushing ...')
             # search_batch = copy.deepcopy(search_batch_input)
