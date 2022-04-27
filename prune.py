@@ -46,6 +46,8 @@ def prune_prototypes(dataloader,
         if nearest_train_patch_class_counts_j[class_j] < prune_threshold:
             prototypes_to_prune.append(j)
 
+    # TODO: assert that we leave at least 1 prototype for each class
+
     log('k = {}, prune_threshold = {}'.format(k, prune_threshold))
     log('{} prototypes will be pruned'.format(len(prototypes_to_prune)))
 
