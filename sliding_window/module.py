@@ -59,7 +59,6 @@ class SlidingWindowModule(LightningModule):
             num_warm_epochs: int = gin.REQUIRED,
             loss_weight_crs_ent: float = gin.REQUIRED,
             loss_weight_contrastive: float = gin.REQUIRED,
-            loss_weight_object: float = 0.0,
             loss_weight_clst: float = gin.REQUIRED,
             loss_weight_sep: float = gin.REQUIRED,
             loss_weight_l1: float = gin.REQUIRED,
@@ -85,7 +84,6 @@ class SlidingWindowModule(LightningModule):
         self.num_warm_epochs = num_warm_epochs
         self.loss_weight_crs_ent = loss_weight_crs_ent
         self.loss_weight_contrastive = loss_weight_contrastive
-        self.loss_weight_object = loss_weight_object
         self.loss_weight_clst = loss_weight_clst
         self.loss_weight_sep = loss_weight_sep
         self.loss_weight_l1 = loss_weight_l1
@@ -122,10 +120,7 @@ class SlidingWindowModule(LightningModule):
     def _step(self, split_key: str, batch):
         metrics = self.metrics[split_key]
 
-        if len(batch) == 2:
-            image, target = batch
-        else:
-            image, target, object_mask = batch
+        image, target = batch
 
         image = image.to(self.device)
         target = target.to(self.device)

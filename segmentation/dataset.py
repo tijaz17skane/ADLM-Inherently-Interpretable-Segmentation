@@ -23,7 +23,7 @@ class PatchClassificationDataset(VisionDataset):
             self,
             split_key: str,
             is_eval: bool,
-            model_image_size: int, # TODO this is unused, delete
+            model_image_size: int,  # TODO this is unused, delete
             push_prototypes: bool = False,
             mean: List[float] = gin.REQUIRED,
             std: List[float] = gin.REQUIRED,
@@ -143,7 +143,7 @@ class PatchClassificationDataset(VisionDataset):
 
             full_ann = np.full((img.shape[0], img.shape[1]), fill_value=-1)
             full_ann[self.image_margin_size:-self.image_margin_size,
-                     self.image_margin_size:-self.image_margin_size] = ann
+            self.image_margin_size:-self.image_margin_size] = ann
 
             # insert class for mirrored margin
             full_ann[:self.image_margin_size, :] = np.flip(
@@ -162,20 +162,20 @@ class PatchClassificationDataset(VisionDataset):
 
             full_ann[:self.image_margin_size, :self.image_margin_size] = np.flip(
                 full_ann[self.image_margin_size:2 * self.image_margin_size,
-                         self.image_margin_size:2 * self.image_margin_size],
+                self.image_margin_size:2 * self.image_margin_size],
                 axis=None)
             full_ann[-self.image_margin_size:, -self.image_margin_size:] = np.flip(
                 full_ann[-2 * self.image_margin_size:-self.image_margin_size,
-                         -2 * self.image_margin_size:-self.image_margin_size],
+                -2 * self.image_margin_size:-self.image_margin_size],
                 axis=None)
 
             full_ann[-self.image_margin_size:, :self.image_margin_size] = np.flip(
                 full_ann[-2 * self.image_margin_size:-self.image_margin_size,
-                         self.image_margin_size:2 * self.image_margin_size],
+                self.image_margin_size:2 * self.image_margin_size],
                 axis=None)
             full_ann[:self.image_margin_size, -self.image_margin_size:] = np.flip(
                 full_ann[self.image_margin_size:2 * self.image_margin_size,
-                         -2 * self.image_margin_size:-self.image_margin_size],
+                -2 * self.image_margin_size:-self.image_margin_size],
                 axis=None)
 
             if self.object_masks:
@@ -187,7 +187,7 @@ class PatchClassificationDataset(VisionDataset):
 
                 full_obj_mask = np.full((img.shape[0], img.shape[1]), fill_value=-1)
                 full_obj_mask[self.image_margin_size:-self.image_margin_size,
-                              self.image_margin_size:-self.image_margin_size] = obj_mask
+                self.image_margin_size:-self.image_margin_size] = obj_mask
 
                 # insert object mask for mirrored margin
                 full_obj_mask[:self.image_margin_size, :] = np.flip(
@@ -206,20 +206,20 @@ class PatchClassificationDataset(VisionDataset):
 
                 full_obj_mask[:self.image_margin_size, :self.image_margin_size] = np.flip(
                     full_obj_mask[self.image_margin_size:2 * self.image_margin_size,
-                                  self.image_margin_size:2 * self.image_margin_size],
+                    self.image_margin_size:2 * self.image_margin_size],
                     axis=None)
                 full_obj_mask[-self.image_margin_size:, -self.image_margin_size:] = np.flip(
                     full_obj_mask[-2 * self.image_margin_size:-self.image_margin_size,
-                                  -2 * self.image_margin_size:-self.image_margin_size],
+                    -2 * self.image_margin_size:-self.image_margin_size],
                     axis=None)
 
                 full_obj_mask[-self.image_margin_size:, :self.image_margin_size] = np.flip(
                     full_obj_mask[-2 * self.image_margin_size:-self.image_margin_size,
-                                  self.image_margin_size:2 * self.image_margin_size],
+                    self.image_margin_size:2 * self.image_margin_size],
                     axis=None)
                 full_obj_mask[:self.image_margin_size, -self.image_margin_size:] = np.flip(
                     full_obj_mask[self.image_margin_size:2 * self.image_margin_size,
-                                  -2 * self.image_margin_size:-self.image_margin_size],
+                    -2 * self.image_margin_size:-self.image_margin_size],
                     axis=None)
             else:
                 full_obj_mask, obj_mask = None, None
@@ -235,12 +235,12 @@ class PatchClassificationDataset(VisionDataset):
                 v_shift = np.random.randint(-self.patch_size + 1, self.patch_size)
 
             img = img[self.image_margin_size + h_shift:-self.image_margin_size + h_shift,
-                      self.image_margin_size + v_shift:-self.image_margin_size + v_shift]
+                  self.image_margin_size + v_shift:-self.image_margin_size + v_shift]
             target = full_ann[self.image_margin_size + h_shift:-self.image_margin_size + h_shift,
-                              self.image_margin_size + v_shift: -self.image_margin_size + v_shift]
+                     self.image_margin_size + v_shift: -self.image_margin_size + v_shift]
             if self.object_masks:
                 obj_mask = obj_mask[self.image_margin_size + h_shift:-self.image_margin_size + h_shift,
-                                    self.image_margin_size + v_shift: -self.image_margin_size + v_shift]
+                           self.image_margin_size + v_shift: -self.image_margin_size + v_shift]
 
             img = torch.tensor(img).permute(2, 0, 1) / 256
 
@@ -269,7 +269,7 @@ class PatchClassificationDataset(VisionDataset):
                 for i in range(n_target_rows):
                     for j in range(n_target_cols):
                         patch_classes = target[i * self.patch_size:(i + 1) * self.patch_size,
-                                               j * self.patch_size:(j + 1) * self.patch_size]
+                                        j * self.patch_size:(j + 1) * self.patch_size]
 
                         # uncomment for distribution
                         # unique, counts = np.unique(patch_classes.flatten(), return_counts=True)
@@ -290,8 +290,10 @@ class PatchClassificationDataset(VisionDataset):
 
             return img, target.copy(), obj_mask
         except Exception as e:
-            raise e
-            # TODO catch errors
+            log(f'EXCEPTION: {str(e)}')
+            return np.zeros((3, self.window_size[0], self.window_size[1]), dtype=np.float32), \
+                   np.zeros((self.window_size[0], self.window_size[1])), \
+                   np.zeros((self.window_size[0], self.window_size[1]))
 
 
 if __name__ == '__main__':
