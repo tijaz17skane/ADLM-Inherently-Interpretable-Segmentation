@@ -147,13 +147,14 @@ class PatchClassificationModule(LightningModule):
         if object_mask is not None:
             object_mask = object_mask.to(self.device).to(torch.float32)
 
-        output, patch_distances = self.ppnet.forward(image)
+        output, patch_distances, patch_features = self.ppnet.forward_with_features(image)
 
         # treat each patch as a separate sample in calculating loss
         # log_output_flat = torch.nn.functional.log_softmax(output.reshape(-1, output.shape[-1]), dim=-1)
         # target_flat = target.reshape(-1, target.shape[-1])
 
         output_flat = output.reshape(-1, output.shape[-1])
+        features_flat = patch_features.reshape(-1, patch_features.shape[-1])
         dist_flat = patch_distances.permute(0, 2, 3, 1).reshape(-1, patch_distances.shape[1])
 
         if target.ndim > 3:
@@ -193,16 +194,18 @@ class PatchClassificationModule(LightningModule):
             target_oh = target_flat
         else:
             target_flat = target.flatten()
+
             if object_mask is not None:
-                object_mask = object_mask.flatten()
+                object_mask_flat = object_mask.flatten()
 
             if self.ignore_void_class:
                 target_not_void = (target_flat != 0).nonzero().squeeze()
                 target_flat = target_flat[target_not_void] - 1
                 output_flat = output_flat[target_not_void]
+                features_flat = features_flat[target_not_void]
                 dist_flat = dist_flat[target_not_void]
                 if object_mask is not None:
-                    object_mask = object_mask[target_not_void]
+                    object_mask_flat = object_mask_flat[target_not_void]
 
             cross_entropy = torch.nn.functional.cross_entropy(
                 output_flat,
@@ -266,7 +269,20 @@ class PatchClassificationModule(LightningModule):
         if object_mask is None:
             object_dist_loss = 0.0
         else:
-            object_dist_loss = 0.0
+            object_dist_loss = []
+            # TODO maybe we can do this smarter without the loop
+            for i in torch.unique(object_mask_flat):
+                same_object = (object_mask_flat == i).nonzero().squeeze()
+                if same_object.ndim > 0 and len(same_object) > 1:
+                    obj_features = features_flat[same_object]
+                    mean_feature = torch.mean(obj_features, dim=-1)
+                    mean_dist_to_mean = torch.mean(torch.cdist(mean_feature.unsqueeze(0), obj_features.T))
+                    object_dist_loss.append(mean_dist_to_mean)
+
+            if len(object_dist_loss) > 0:
+                object_dist_loss = torch.mean(torch.stack(object_dist_loss))
+            else:
+                object_dist_loss = 0.0
 
         loss = (self.loss_weight_crs_ent * cross_entropy +
                 self.loss_weight_contrastive * contrastive_loss +
@@ -283,7 +299,8 @@ class PatchClassificationModule(LightningModule):
             metrics['contrastive_loss'] += contrastive_loss.item()
             metrics['cluster_cost'] += cluster_cost.item()
             if object_mask is not None:
-                metrics['object_dist_loss'] += object_dist_loss.item()
+                metrics['object_dist_loss'] += object_dist_loss if isinstance(object_dist_loss, float) \
+                    else object_dist_loss.item()
             metrics['separation'] += separation.item()
             metrics['separation_higher'] += separation_higher.item()
             metrics['n_examples'] += target_flat.size(0)

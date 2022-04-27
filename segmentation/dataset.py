@@ -179,7 +179,7 @@ class PatchClassificationDataset(VisionDataset):
                 axis=None)
 
             if self.object_masks:
-                mask_path = os.path.join(self.annotations_dir, img_id + 'obj_mask.npy')
+                mask_path = os.path.join(self.annotations_dir, img_id + '_obj_mask.npy')
                 obj_mask = np.load(mask_path)
 
                 if self.transpose_ann:
@@ -239,8 +239,8 @@ class PatchClassificationDataset(VisionDataset):
             target = full_ann[self.image_margin_size + h_shift:-self.image_margin_size + h_shift,
                      self.image_margin_size + v_shift: -self.image_margin_size + v_shift]
             if self.object_masks:
-                obj_mask = obj_mask[self.image_margin_size + h_shift:-self.image_margin_size + h_shift,
-                           self.image_margin_size + v_shift: -self.image_margin_size + v_shift]
+                obj_mask = full_obj_mask[self.image_margin_size + h_shift:-self.image_margin_size + h_shift,
+                                         self.image_margin_size + v_shift: -self.image_margin_size + v_shift]
 
             img = torch.tensor(img).permute(2, 0, 1) / 256
 
@@ -252,6 +252,8 @@ class PatchClassificationDataset(VisionDataset):
 
                 img = img[:, window_left:window_right, window_top:window_bottom]
                 target = target[window_left:window_right, window_top:window_bottom]
+                if self.object_masks:
+                    obj_mask = obj_mask[window_left:window_right, window_top:window_bottom]
 
             # Random horizontal flip
             if not self.is_eval and np.random.random() > 0.5:
@@ -288,7 +290,7 @@ class PatchClassificationDataset(VisionDataset):
             if self.target_transform is not None:
                 target = self.target_transform(target)
 
-            return img, target.copy(), obj_mask
+            return img, target.copy(), obj_mask.copy() if obj_mask is not None else None
         except Exception as e:
             log(f'EXCEPTION: {str(e)}')
             return np.zeros((3, self.window_size[0], self.window_size[1]), dtype=np.float32), \

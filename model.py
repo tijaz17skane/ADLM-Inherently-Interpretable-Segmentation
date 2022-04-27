@@ -229,6 +229,11 @@ class PPNet(nn.Module):
         conv_features = self.conv_features(x)
         return self.forward_from_conv_features(conv_features)
 
+    def forward_with_features(self, x):
+        conv_features = self.conv_features(x)
+        logits, distances = self.forward_from_conv_features(conv_features)
+        return logits, distances, conv_features
+
     def forward_from_conv_features(self, conv_features):
         distances = self._l2_convolution(conv_features)
         '''
