@@ -82,12 +82,13 @@ def push_prototypes(dataloader,  # pytorch dataloader (must be unnormalized in [
         num_classes = num_classes + 1
 
     log(f'Updating prototypes...')
-    for push_iter, (search_batch_input, search_y) in tqdm(enumerate(dataloader),
-                                                          desc='updating prototypes', total=len(dataloader)):
+    for push_iter, batch in tqdm(enumerate(dataloader),
+                                 desc='updating prototypes', total=len(dataloader)):
         '''
         start_index_of_search keeps track of the index of the image
         assigned to serve as prototype
         '''
+        search_batch_input, search_y = batch[:2]
         start_index_of_search_batch = push_iter * search_batch_size
 
         update_prototypes_on_batch(search_batch_input,

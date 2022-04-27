@@ -17,7 +17,7 @@ import numpy as np
 
 
 @gin.configurable(allowlist=['mean', 'std', 'transpose_ann', 'image_margin_size', 'patch_size', 'num_classes',
-                             'window_size'])
+                             'window_size', 'object_masks'])
 class PatchClassificationDataset(VisionDataset):
     def __init__(
             self,
@@ -32,7 +32,8 @@ class PatchClassificationDataset(VisionDataset):
             patch_size: float = gin.REQUIRED,
             num_classes: float = gin.REQUIRED,
             length_multiplier: int = 1,
-            window_size: Optional[Tuple[float, float]] = None
+            window_size: Optional[Tuple[float, float]] = None,
+            object_masks: bool = False
     ):
         self.length_multiplier = length_multiplier
         self.mean = mean
@@ -47,6 +48,7 @@ class PatchClassificationDataset(VisionDataset):
         self.patch_size = patch_size
         self.num_classes = num_classes
         self.window_size = window_size
+        self.object_masks = object_masks
 
         # we generated cityscapes images with max margin earlier
         self.img_dir = os.path.join(data_path, f'img_with_margin_{self.image_margin_size}/{split_key}')
@@ -176,6 +178,52 @@ class PatchClassificationDataset(VisionDataset):
                          -2 * self.image_margin_size:-self.image_margin_size],
                 axis=None)
 
+            if self.object_masks:
+                mask_path = os.path.join(self.annotations_dir, img_id + 'obj_mask.npy')
+                obj_mask = np.load(mask_path)
+
+                if self.transpose_ann:
+                    obj_mask = obj_mask.transpose()
+
+                full_obj_mask = np.full((img.shape[0], img.shape[1]), fill_value=-1)
+                full_obj_mask[self.image_margin_size:-self.image_margin_size,
+                              self.image_margin_size:-self.image_margin_size] = obj_mask
+
+                # insert object mask for mirrored margin
+                full_obj_mask[:self.image_margin_size, :] = np.flip(
+                    full_obj_mask[self.image_margin_size:2 * self.image_margin_size, :],
+                    axis=0)
+                full_obj_mask[-self.image_margin_size:, :] = np.flip(
+                    full_obj_mask[-2 * self.image_margin_size:-self.image_margin_size, :],
+                    axis=0)
+
+                full_obj_mask[:, :self.image_margin_size] = np.flip(
+                    full_obj_mask[:, self.image_margin_size:2 * self.image_margin_size],
+                    axis=1)
+                full_obj_mask[:, -self.image_margin_size:] = np.flip(
+                    full_obj_mask[:, -2 * self.image_margin_size:-self.image_margin_size],
+                    axis=1)
+
+                full_obj_mask[:self.image_margin_size, :self.image_margin_size] = np.flip(
+                    full_obj_mask[self.image_margin_size:2 * self.image_margin_size,
+                                  self.image_margin_size:2 * self.image_margin_size],
+                    axis=None)
+                full_obj_mask[-self.image_margin_size:, -self.image_margin_size:] = np.flip(
+                    full_obj_mask[-2 * self.image_margin_size:-self.image_margin_size,
+                                  -2 * self.image_margin_size:-self.image_margin_size],
+                    axis=None)
+
+                full_obj_mask[-self.image_margin_size:, :self.image_margin_size] = np.flip(
+                    full_obj_mask[-2 * self.image_margin_size:-self.image_margin_size,
+                                  self.image_margin_size:2 * self.image_margin_size],
+                    axis=None)
+                full_obj_mask[:self.image_margin_size, -self.image_margin_size:] = np.flip(
+                    full_obj_mask[self.image_margin_size:2 * self.image_margin_size,
+                                  -2 * self.image_margin_size:-self.image_margin_size],
+                    axis=None)
+            else:
+                full_obj_mask, obj_mask = None, None
+
             # assert np.sum(full_ann == -1) == 0
 
             if self.is_eval:
@@ -190,6 +238,9 @@ class PatchClassificationDataset(VisionDataset):
                       self.image_margin_size + v_shift:-self.image_margin_size + v_shift]
             target = full_ann[self.image_margin_size + h_shift:-self.image_margin_size + h_shift,
                               self.image_margin_size + v_shift: -self.image_margin_size + v_shift]
+            if self.object_masks:
+                obj_mask = obj_mask[self.image_margin_size + h_shift:-self.image_margin_size + h_shift,
+                                    self.image_margin_size + v_shift: -self.image_margin_size + v_shift]
 
             img = torch.tensor(img).permute(2, 0, 1) / 256
 
@@ -206,6 +257,8 @@ class PatchClassificationDataset(VisionDataset):
             if not self.is_eval and np.random.random() > 0.5:
                 target = np.flip(target, axis=1)
                 img = torch.flip(img, [2])
+                if self.object_masks:
+                    obj_mask = np.flip(obj_mask, axis=1)
 
             if self.patch_size > 1:
                 # Get target as a distribution of classes per patch
@@ -235,7 +288,7 @@ class PatchClassificationDataset(VisionDataset):
             if self.target_transform is not None:
                 target = self.target_transform(target)
 
-            return img, target.copy()
+            return img, target.copy(), obj_mask
         except Exception as e:
             raise e
             # TODO catch errors

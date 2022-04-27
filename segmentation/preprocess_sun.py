@@ -4,7 +4,8 @@ https://rgbd.cs.princeton.edu/
 
 how to run run:
 
-python -m sun.preprocess
+python -m sun.preprocess preprocess-sun
+python -m sun.preprocess preprocess-sun-obj-masks
 """
 from collections import Counter
 
@@ -104,5 +105,44 @@ def preprocess_sun():
         json.dump(img_ids, fp)
 
 
+def preprocess_sun_obj_masks():
+    print(f"Using {len(SUN_CATEGORIES)} object categories")
+
+    os.makedirs(ANNOTATIONS_DIR, exist_ok=True)
+    os.makedirs(MARGIN_IMG_DIR, exist_ok=True)
+
+    split_mat_path = os.path.join(SOURCE_PATH, 'SUNRGBDtoolbox/traintestSUNRGBD/allsplit.mat')
+
+    split_mat = scipy.io.loadmat(split_mat_path)
+
+    paths = {
+        'train': split_mat['trainvalsplit'][0][0][0][:, 0],
+        'val': split_mat['trainvalsplit'][0][0][1][:, 0],
+        'test': split_mat['alltest'][0]
+    }
+
+    for split_key in ['train', 'val', 'test']:
+        objects_per_image = []
+        split_paths = paths[split_key]
+        os.makedirs(os.path.join(MARGIN_IMG_DIR, split_key), exist_ok=True)
+        os.makedirs(os.path.join(ANNOTATIONS_DIR, split_key), exist_ok=True)
+
+        for sample_dir in tqdm(split_paths, desc=split_key):
+            sample_dir = sample_dir[0]
+            sample_dir = os.path.relpath(sample_dir, '/n/fs/sun3d/data')
+            img_id = sample_dir.replace(os.sep, '_').replace('-', '_')
+            sample_dir = os.path.join(SOURCE_PATH, sample_dir)
+
+            mat = scipy.io.loadmat(os.path.join(sample_dir, 'seg.mat'))
+
+            seg_mat = mat['seglabel'].transpose()
+
+            objects_per_image.append(len(np.unique(seg_mat)))
+
+            np.save(os.path.join(ANNOTATIONS_DIR, split_key, f'{img_id}_obj_mask.npy'), seg_mat)
+
+        print("{:s} set. Average objects per image: {:.2f}".format(split_key, np.mean(objects_per_image)))
+
+
 if __name__ == '__main__':
-    argh.dispatch_command(preprocess_sun)
+    argh.dispatch_commands([preprocess_sun, preprocess_sun_obj_masks])
