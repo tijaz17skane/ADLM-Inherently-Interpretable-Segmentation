@@ -142,6 +142,11 @@ class PatchClassificationModule(LightningModule):
         else:
             image, target, object_mask = batch
 
+            # make object IDs unique within batch
+            sample_idx = torch.arange(object_mask.shape[0], device=object_mask.device).unsqueeze(-1).unsqueeze(-1)
+            max_obj_num = torch.max(object_mask)
+            object_mask = (sample_idx * max_obj_num) + object_mask
+
         image = image.to(self.device)
         target = target.to(self.device).to(torch.float32)
         if object_mask is not None:
