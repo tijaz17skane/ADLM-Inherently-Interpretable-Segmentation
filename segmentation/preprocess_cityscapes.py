@@ -4,7 +4,8 @@ https://www.cityscapes-dataset.com/
 
 how to run run:
 
-python -m cityscapes.preprocess {N_JOBS}
+python -m cityscapes.preprocess preprocess-cityscapes {N_JOBS}
+python -m cityscapes.preprocess preprocess-cityscapes-obj-masks {N_JOBS}
 """
 import argh
 
@@ -70,6 +71,24 @@ def process_images_in_chunks(args):
     return chunk_img_ids
 
 
+def process_obj_masks_in_chunks(args):
+    split_key, city_name, png_files = args
+
+    split_dir = os.path.join(LABELS_PATH, split_key)
+    city_dir = os.path.join(split_dir, city_name)
+
+    for file in png_files:
+        img_id = file.split('_gtFine_instanceIds.png')[0]
+
+        # Save object mask labels
+        with open(os.path.join(city_dir, file), 'rb') as f:
+            # noinspection PyTypeChecker
+            obj_ids = np.array(Image.open(f).convert('RGB'))[:, :, 0].astype(np.uint8)
+        np.save(os.path.join(ANNOTATIONS_DIR, split_key, f'{img_id}_obj_mask.npy'), obj_ids)
+
+    return len(png_files)
+
+
 def preprocess_cityscapes(n_jobs: int, chunk_size: int = 10):
     n_jobs = int(n_jobs)
     print(f"Using {len(CITYSCAPES_CATEGORIES)} object categories using {n_jobs} threads.")
@@ -109,5 +128,31 @@ def preprocess_cityscapes(n_jobs: int, chunk_size: int = 10):
         json.dump(img_ids, fp)
 
 
+def preprocess_cityscapes_obj_masks(n_jobs: int, chunk_size: int = 10):
+    n_jobs = int(n_jobs)
+    print(f"Using {len(CITYSCAPES_CATEGORIES)} object categories using {n_jobs} threads.")
+
+    os.makedirs(ANNOTATIONS_DIR, exist_ok=True)
+
+    for split_key in tqdm(['train', 'val', 'test'], desc='preprocessing images'):
+        split_dir = os.path.join(LABELS_PATH, split_key)
+        os.makedirs(os.path.join(ANNOTATIONS_DIR, split_key), exist_ok=True)
+
+        for city_name in tqdm(os.listdir(split_dir), desc=split_key):
+            city_dir = os.path.join(split_dir, city_name)
+            city_files = np.asarray([file for file in os.listdir(city_dir) if file.endswith('labelIds.png')])
+            n_chunks = int(np.ceil(len(city_files) / chunk_size))
+            chunk_files = np.array_split(city_files, n_chunks)
+
+            parallel_args = [(split_key, city_name, chunk) for chunk in chunk_files]
+
+            pool = multiprocessing.Pool(n_jobs)
+
+            for _ in pool.imap_unordered(process_obj_masks_in_chunks, parallel_args):
+                pass
+
+            pool.close()
+
+
 if __name__ == '__main__':
-    argh.dispatch_command(preprocess_cityscapes)
+    argh.dispatch_commands([preprocess_cityscapes, preprocess_cityscapes_obj_masks])
