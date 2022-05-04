@@ -290,7 +290,7 @@ class PatchClassificationDataset(VisionDataset):
             if self.target_transform is not None:
                 target = self.target_transform(target)
 
-            return img, target.copy(), obj_mask.copy() if obj_mask is not None else None
+            return img, target.copy(), obj_mask.copy() if obj_mask is not None else np.zeros_like(target)
         except Exception as e:
             log(f'EXCEPTION: {str(e)}')
             return np.zeros((3, self.window_size[0], self.window_size[1]), dtype=np.float32), \

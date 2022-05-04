@@ -140,7 +140,7 @@ def preprocess_cityscapes_obj_masks(n_jobs: int, chunk_size: int = 10):
 
         for city_name in tqdm(os.listdir(split_dir), desc=split_key):
             city_dir = os.path.join(split_dir, city_name)
-            city_files = np.asarray([file for file in os.listdir(city_dir) if file.endswith('labelIds.png')])
+            city_files = np.asarray([file for file in os.listdir(city_dir) if file.endswith('instanceIds.png')])
             n_chunks = int(np.ceil(len(city_files) / chunk_size))
             chunk_files = np.array_split(city_files, n_chunks)
 
