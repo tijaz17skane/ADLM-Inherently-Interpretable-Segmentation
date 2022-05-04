@@ -37,7 +37,7 @@ PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_contrastive = 0.8
 PatchClassificationModule.loss_weight_clst = 0.8
 PatchClassificationModule.loss_weight_orthogonal = -0.01
-PatchClassificationModule.loss_weight_sep = 0.0
+PatchClassificationModule.loss_weight_sep = -0.01
 PatchClassificationModule.loss_weight_l1 = 1e-4
 
 PatchClassificationModule.joint_optimizer_lr_features = 1e-4
