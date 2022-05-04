@@ -111,7 +111,7 @@ def push_prototypes(dataloader, # pytorch dataloader (must be unnormalized in [0
     prototype_update = np.reshape(global_min_fmap_patches,
                                   tuple(prototype_shape))
     prototype_network_parallel.prototype_vectors.data.copy_(torch.tensor(prototype_update, dtype=torch.float32).cuda())
-    # prototype_network_parallel.cuda()
+    # ppnet.cuda()
     end = time.time()
     log('\tpush time: \t{0}'.format(end -  start))
 
@@ -139,7 +139,7 @@ def update_prototypes_on_batch(search_batch_input,
 
     if preprocess_input_function is not None:
         # print('preprocessing input for pushing ...')
-        # search_batch = copy.deepcopy(search_batch_input)
+        # search_batch = copy.deepcopy(search_image_input)
         search_batch = preprocess_input_function(search_batch_input)
 
     else:

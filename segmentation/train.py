@@ -16,10 +16,10 @@ from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.loggers import NeptuneLogger, TensorBoardLogger, CSVLogger
 
 from segmentation.data_module import PatchClassificationDataModule
+from segmentation.dataset import PatchClassificationDataset
 from segmentation.module import PatchClassificationModule
 from segmentation.config import get_operative_config_json
 from model import construct_PPNet
-from preprocess import preprocess
 from segmentation.push import push_prototypes
 from settings import log
 
@@ -111,15 +111,18 @@ def train(
         log('SAVING PROTOTYPES')
         module.eval()
         torch.set_grad_enabled(False)
-        push_dataloader = data_module.train_push_dataloader()
 
-        def preprocess_push_input(x):
-            return preprocess(x, mean=push_dataloader.dataset.mean, std=push_dataloader.dataset.std)
+        push_dataset = PatchClassificationDataset(
+            split_key='train',
+            is_eval=True,
+            model_image_size=data_module.model_image_size,
+            push_prototypes=True,
+            length_multiplier=1
+        )
 
         push_prototypes(
-            push_dataloader,
+            push_dataset,
             prototype_network_parallel=ppnet,
-            preprocess_input_function=preprocess_push_input,
             prototype_layer_stride=1,
             root_dir_for_saving_prototypes=module.prototypes_dir,
             epoch_number=module.current_epoch,

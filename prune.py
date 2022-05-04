@@ -68,7 +68,7 @@ def prune_prototypes(dataloader,
 
     ### prune prototypes
     prototype_network_parallel.module.prune_prototypes(prototypes_to_prune)
-    #torch.save(obj=prototype_network_parallel.module,
+    #torch.save(obj=ppnet.module,
     #           f=os.path.join(original_model_dir, 'pruned_prototypes_epoch{}_k{}_pt{}'.format(epoch_number,
     #                                              k,
     #                                              prune_threshold),

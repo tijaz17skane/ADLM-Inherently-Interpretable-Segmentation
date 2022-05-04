@@ -87,7 +87,7 @@ def find_k_nearest_patches_to_prototypes(dataloader,  # pytorch dataloader (must
 
         if preprocess_input_function is not None:
             # print('preprocessing input for pushing ...')
-            # search_batch = copy.deepcopy(search_batch_input)
+            # search_batch = copy.deepcopy(search_image_input)
             search_batch = preprocess_input_function(search_batch_input)
 
         else:

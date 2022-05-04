@@ -29,7 +29,7 @@ class PatchClassificationDataset(VisionDataset):
             std: List[float] = gin.REQUIRED,
             transpose_ann: bool = gin.REQUIRED,
             image_margin_size: int = gin.REQUIRED,
-            patch_size: float = gin.REQUIRED,
+            patch_size: int = gin.REQUIRED,
             num_classes: float = gin.REQUIRED,
             length_multiplier: int = 1,
             window_size: Optional[Tuple[float, float]] = None,
