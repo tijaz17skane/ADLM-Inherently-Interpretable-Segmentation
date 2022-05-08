@@ -16,8 +16,9 @@ train.early_stopping_patience_main = 32
 train.early_stopping_patience_last_layer = 32
 train.start_checkpoint = ''
 
-PatchClassificationDataset.mean = [0.28689554, 0.32513303, 0.28389177]
-PatchClassificationDataset.std = [0.18696375, 0.19017339, 0.18720214]
+# mean and STD taken from deeplabv3 trained on COCO
+PatchClassificationDataset.mean = [0.485, 0.456, 0.406]
+PatchClassificationDataset.std = [0.229, 0.224, 0.225]
 PatchClassificationDataset.transpose_ann = False
 PatchClassificationDataset.image_margin_size = 512
 PatchClassificationDataset.patch_size = 1
@@ -31,7 +32,7 @@ DataLoader.batch_size = 4
 
 Trainer.max_epochs = 1000
 
-PatchClassificationModule.num_warm_epochs = 0
+PatchClassificationModule.num_warm_epochs = 16
 
 PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_contrastive = 0.0

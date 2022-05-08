@@ -2,7 +2,9 @@
 Some constants related to Cityscapes and SUN datasets
 """
 
-CITYSCAPES_MEAN, CITYSCAPES_STD = [0.28689554, 0.32513303, 0.28389177], [0.18696375, 0.19017339, 0.18720214]
+# Taken from deeplabv3 trained on COCO
+CITYSCAPES_MEAN = [0.485, 0.456, 0.406]
+CITYSCAPES_STD = [0.229, 0.224, 0.225]
 
 # Mapping of IDs to labels
 # We follow https://github.com/mcordts/cityscapesScripts/blob/master/cityscapesscripts/helpers/labels.py
@@ -79,8 +81,9 @@ CITYSCAPES_CATEGORIES = [
 ]
 
 
-# calculated on SUN training set
-SUN_MEAN, SUN_STD = [0.496, 0.463, 0.438], [0.228, 0.232, 0.231]
+# Taken from deeplabv3 trained on COCO
+SUN_MEAN = [0.485, 0.456, 0.406]
+SUN_STD = [0.229, 0.224, 0.225]
 
 # we follow https://rgbd.cs.princeton.edu/supp.pdf and use only 37 selected categories, all others are 'void'
 SUN_CATEGORIES = [

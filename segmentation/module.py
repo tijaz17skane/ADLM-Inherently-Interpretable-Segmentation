@@ -274,7 +274,8 @@ class PatchClassificationModule(LightningModule):
 
         # (batch_size, num_classes) x (num_classes, num_prototypes) = (batch_size, num_prototypes)
         # target_proto_identity.shape = (batch_size, num_prototypes)
-        target_proto_identity = torch.matmul(target_oh, self.ppnet.prototype_class_identity.to(target_oh.device).T)
+        target_proto_identity = torch.matmul(target_oh.float(),
+                                             self.ppnet.prototype_class_identity.to(target_oh.device).float().T)
 
         # proto_dist_correct_class.shape = (num_prototypes, batch_size)
         proto_dist_correct_class = (dist_flat + 10e6 * (target_proto_identity != 1)).T
