@@ -61,7 +61,8 @@ class PatchClassificationDataset(VisionDataset):
             ])
         else:
             transform = transforms.Compose([
-                transforms.ColorJitter(0.3, 0.3, 0.3, 0.1),
+                # TODO: find good augmentations
+                # transforms.ColorJitter(0.3, 0.3, 0.3, 0.1),
                 transforms.Normalize(mean, std)
             ])
 

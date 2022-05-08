@@ -35,7 +35,8 @@ base_architecture_to_features = {'resnet18': resnet18_features,
                                  'vgg19_bn': vgg19_bn_features}
 
 
-@gin.configurable(allowlist=['void_negative_weight', 'bottleneck_stride', 'patch_classification', 'void_class'])
+@gin.configurable(allowlist=['void_negative_weight', 'bottleneck_stride', 'patch_classification',
+                             'void_class', 'argmax_only'])
 class PPNet(nn.Module):
     def __init__(self, features, img_size, prototype_shape,
                  proto_layer_rf_info, num_classes, init_weights=True,
@@ -44,6 +45,7 @@ class PPNet(nn.Module):
                  void_negative_weight: Optional[float] = gin.REQUIRED,
                  bottleneck_stride: Optional[int] = None,
                  void_class: bool = True,
+                 argmax_only: bool = False,
                  patch_classification: bool = False):
 
         super(PPNet, self).__init__()
@@ -56,6 +58,7 @@ class PPNet(nn.Module):
         self.bottleneck_stride = bottleneck_stride
         self.patch_classification = patch_classification
         self.void_class = void_class
+        self.argmax_only = argmax_only
 
         # prototype_activation_function could be 'log', 'linear',
         # or a generic function that converts distance to similarity score
@@ -233,6 +236,24 @@ class PPNet(nn.Module):
         conv_features = self.conv_features(x)
         logits, distances = self.forward_from_conv_features(conv_features)
         return logits, distances, conv_features
+    
+    def run_last_layer(self, prototype_activations):
+        if hasattr(self, 'argmax_only') and self.argmax_only:
+            for cls_i in range(self.prototype_class_identity.shape[1]):
+                is_prototype_cls = (self.prototype_class_identity[:, cls_i] == 1).unsqueeze(0).to(
+                    prototype_activations.device
+                )
+                cls_ind = is_prototype_cls.nonzero()[:, 1]
+
+                max_val, _ = torch.max(prototype_activations[:, cls_ind], dim=-1)
+                max_val = max_val.unsqueeze(-1)
+
+                prototype_activations[:, cls_ind] = prototype_activations[:, cls_ind] * \
+                                                    (prototype_activations[:, cls_ind] == max_val)
+
+            return self.last_layer(prototype_activations)
+        else:
+            return self.last_layer(prototype_activations)
 
     def forward_from_conv_features(self, conv_features):
         distances = self._l2_convolution(conv_features)
@@ -251,7 +272,7 @@ class PPNet(nn.Module):
             dist_view = dist_view.view(-1, num_prototypes)
             prototype_activations = self.distance_2_similarity(dist_view)
 
-            logits = self.last_layer(prototype_activations)
+            logits = self.run_last_layer(prototype_activations)
 
             # shape: (batch_size, n_patches_cols, n_patches_rows, num_classes)
             logits = logits.reshape(batch_size, n_patches_cols, n_patches_rows, -1)
@@ -265,7 +286,7 @@ class PPNet(nn.Module):
             # min_distances.shape = (batch_size, num_prototypes)
             min_distances = min_distances.view(-1, self.num_prototypes)
             prototype_activations = self.distance_2_similarity(min_distances)
-            logits = self.last_layer(prototype_activations)
+            logits = self.run_last_layer(prototype_activations)
             return logits, min_distances
 
     def push_forward(self, x):

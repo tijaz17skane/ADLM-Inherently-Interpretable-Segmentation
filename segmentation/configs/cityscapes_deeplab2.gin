@@ -12,8 +12,8 @@ construct_PPNet.add_on_layers_type = 'bottleneck_pool'
 
 train.model_image_size = 1024
 train.random_seed = 20220227
-train.early_stopping_patience_main = 24
-train.early_stopping_patience_last_layer = 24
+train.early_stopping_patience_main = 32
+train.early_stopping_patience_last_layer = 32
 train.start_checkpoint = ''
 
 PatchClassificationDataset.mean = [0.28689554, 0.32513303, 0.28389177]
@@ -31,13 +31,14 @@ DataLoader.batch_size = 4
 
 Trainer.max_epochs = 1000
 
-PatchClassificationModule.num_warm_epochs = 10
+PatchClassificationModule.num_warm_epochs = 0
 
 PatchClassificationModule.loss_weight_crs_ent = 1.0
-PatchClassificationModule.loss_weight_contrastive = 0.8
+PatchClassificationModule.loss_weight_contrastive = 0.0
 PatchClassificationModule.loss_weight_clst = 0.8
-PatchClassificationModule.loss_weight_orthogonal = -0.01
-PatchClassificationModule.loss_weight_sep = -0.01
+PatchClassificationModule.loss_weight_orthogonal = 0.0
+PatchClassificationModule.loss_weight_sep = -0.4
+PatchClassificationModule.loss_weight_proto_rel = 0.4
 PatchClassificationModule.loss_weight_l1 = 1e-4
 
 PatchClassificationModule.joint_optimizer_lr_features = 1e-4
@@ -58,13 +59,14 @@ PatchClassificationModule.ignore_void_class = True
 
 ReduceLROnPlateau.mode = 'min'
 ReduceLROnPlateau.factor = 0.1
-ReduceLROnPlateau.patience = 16
+ReduceLROnPlateau.patience = 20
 ReduceLROnPlateau.min_lr = 1e-7
 
 PPNet.void_negative_weight = None
 PPNet.void_class = False
 PPNet.bottleneck_stride = 1
 PPNet.patch_classification = True
+PPNet.argmax_only = True
 
 # For testing
 # Trainer.overfit_batches = 10

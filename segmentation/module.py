@@ -44,6 +44,7 @@ def reset_metrics() -> Dict:
         'contrastive_loss': 0,
         'orthogonal_loss': 0,
         'object_dist_loss': 0,
+        'prototype_relevance_loss': 0,
         'loss': 0
     }
 
@@ -72,6 +73,7 @@ class PatchClassificationModule(LightningModule):
             loss_weight_orthogonal: float = 0.0,
             loss_weight_clst: float = gin.REQUIRED,
             loss_weight_sep: float = gin.REQUIRED,
+            loss_weight_proto_rel: float = 0.0,
             loss_weight_l1: float = gin.REQUIRED,
             joint_optimizer_lr_features: float = gin.REQUIRED,
             joint_optimizer_lr_add_on_layers: float = gin.REQUIRED,
@@ -99,6 +101,7 @@ class PatchClassificationModule(LightningModule):
         self.loss_weight_orthogonal = loss_weight_orthogonal
         self.loss_weight_clst = loss_weight_clst
         self.loss_weight_sep = loss_weight_sep
+        self.loss_weight_proto_rel = loss_weight_proto_rel
         self.loss_weight_l1 = loss_weight_l1
         self.joint_optimizer_lr_features = joint_optimizer_lr_features
         self.joint_optimizer_lr_add_on_layers = joint_optimizer_lr_add_on_layers
@@ -263,6 +266,29 @@ class PatchClassificationModule(LightningModule):
             proto_dist = torch.cdist(cls_proto_vectors, cls_proto_vectors)
             orthogonal_loss.append(proto_dist)
 
+        # prototype relevance loss:
+        # for each prototype, we want it to have at least 1 close point in the batch
+        # proto_identity.shape = (num_prototypes, num_classes)
+        # dist_flat.shape = (batch_size, num_prototypes)
+        # target_oh.shape = (batch_size, num_classes)
+
+        # (batch_size, num_classes) x (num_classes, num_prototypes) = (batch_size, num_prototypes)
+        # target_proto_identity.shape = (batch_size, num_prototypes)
+        target_proto_identity = torch.matmul(target_oh, self.ppnet.prototype_class_identity.to(target_oh.device).T)
+
+        # proto_dist_correct_class.shape = (num_prototypes, batch_size)
+        proto_dist_correct_class = (dist_flat + 10e6 * (target_proto_identity != 1)).T
+
+        # proto_rel_loss.shape = (num_prototypes, )
+        proto_rel_loss, _ = torch.min(proto_dist_correct_class, dim=-1)
+
+        is_cls_present = (proto_rel_loss < 10e6).nonzero().squeeze()
+        proto_rel_loss = proto_rel_loss[is_cls_present]
+        if len(proto_rel_loss) > 0:
+            proto_rel_loss = torch.mean(proto_rel_loss)
+        else:
+            proto_rel_loss = 0.0
+
         # separation cost = minimum over distances to all classes that have score==0.0
         separation = torch.stack(separation, dim=-1)
         separation, _ = torch.min(separation, dim=-1)
@@ -307,6 +333,7 @@ class PatchClassificationModule(LightningModule):
                 self.loss_weight_sep * separation +
                 self.loss_weight_object * object_dist_loss +
                 self.loss_weight_orthogonal * orthogonal_loss +
+                self.loss_weight_proto_rel * proto_rel_loss +
                 self.loss_weight_l1 * l1)
 
         loss_value = loss.item()
@@ -322,6 +349,7 @@ class PatchClassificationModule(LightningModule):
             metrics['separation'] += separation.item()
             metrics['separation_higher'] += separation_higher.item()
             metrics['orthogonal_loss'] += orthogonal_loss.item()
+            metrics['prototype_relevance_loss'] += proto_rel_loss.item()
             metrics['n_examples'] += target_flat.size(0)
             metrics['n_correct'] += torch.sum(is_correct)
             n_patches = output_flat.shape[0]
@@ -422,7 +450,7 @@ class PatchClassificationModule(LightningModule):
         n_batches = metrics['n_batches']
 
         for key in ['loss', 'contrastive_loss', 'cross_entropy', 'cluster_cost',
-                    'separation', 'object_dist_loss', 'orthogonal_loss']:
+                    'separation', 'object_dist_loss', 'orthogonal_loss', 'prototype_relevance_loss']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         if len(metrics['pos_scores']) > 0 or len(metrics['neg_scores']) > 0:

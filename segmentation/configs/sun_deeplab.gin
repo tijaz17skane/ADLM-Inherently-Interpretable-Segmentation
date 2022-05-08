@@ -62,6 +62,7 @@ ReduceLROnPlateau.min_lr = 1e-7
 PPNet.void_negative_weight = -0.1
 PPNet.bottleneck_stride = 1
 PPNet.patch_classification = True
+PPNet.argmax_only = True
 
 # For testing
 # Trainer.overfit_batches = 10
