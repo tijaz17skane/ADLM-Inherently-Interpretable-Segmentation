@@ -390,8 +390,7 @@ class PatchClassificationModule(LightningModule):
                 tau_val = self.ppnet.gumbel_softmax_tau.item()
                 self.log('gumbel_softmax_tau', tau_val, on_step=True)
                 if tau_val > self.target_tau:
-                    self.ppnet.gumbel_softmax_tau = max(self.ppnet.gumbel_softmax_tau - self.tau_decrease_per_step,
-                                                        self.target_tau)
+                    self.ppnet.gumbel_softmax_tau = max(tau_val - self.tau_decrease_per_step, self.target_tau)
 
     def training_step(self, batch, batch_idx):
         return self._step('train', batch)
