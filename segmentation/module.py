@@ -69,7 +69,7 @@ class PatchClassificationModule(LightningModule):
             last_layer_only: bool,
             num_warm_epochs: int = gin.REQUIRED,
             target_tau: float = 1.0,
-            tau_steps_decrease: float = 0.0,
+            tau_decrease_r: float = 0.0,
             loss_weight_crs_ent: float = gin.REQUIRED,
             loss_weight_contrastive: float = gin.REQUIRED,
             loss_weight_object: float = 0.0,
@@ -99,7 +99,7 @@ class PatchClassificationModule(LightningModule):
         self.last_layer_only = last_layer_only
         self.num_warm_epochs = num_warm_epochs
         self.target_tau = target_tau
-        self.tau_decrease_per_step = (self.ppnet.gumbel_softmax_tau.item() - target_tau) / tau_steps_decrease
+        self.tau_decrease_r = tau_decrease_r
         self.loss_weight_crs_ent = loss_weight_crs_ent
         self.loss_weight_contrastive = loss_weight_contrastive
         self.loss_weight_object = loss_weight_object
@@ -144,7 +144,7 @@ class PatchClassificationModule(LightningModule):
     def forward(self, x):
         return self.ppnet(x)
 
-    def _step(self, split_key: str, batch):
+    def _step(self, split_key: str, batch, batch_idx):
         metrics = self.metrics[split_key]
 
         if len(batch) == 2:
@@ -391,18 +391,18 @@ class PatchClassificationModule(LightningModule):
                 tau_val = self.ppnet.gumbel_softmax_tau.item()
                 self.log('gumbel_softmax_tau', tau_val, on_step=True)
                 if tau_val > self.target_tau:
-                    self.ppnet.gumbel_softmax_tau = nn.Parameter(torch.tensor(max(tau_val - self.tau_decrease_per_step,
-                                                                                  self.target_tau)),
-                                                                 requires_grad=False)
+                    current_batch_idx = self.current_epoch * self.trainer.num_training_batches + batch_idx
+                    new_tau_val = max(self.target_tau, np.exp(-self.tau_decrease_r * current_batch_idx))
+                    self.ppnet.gumbel_softmax_tau = nn.Parameter(torch.tensor(new_tau_val), requires_grad=False)
 
     def training_step(self, batch, batch_idx):
-        return self._step('train', batch)
+        return self._step('train', batch, batch_idx)
 
     def validation_step(self, batch, batch_idx):
-        return self._step('val', batch)
+        return self._step('val', batch, batch_idx)
 
     def test_step(self, batch, batch_idx):
-        return self._step('test', batch)
+        return self._step('test', batch, batch_idx)
 
     def on_train_epoch_start(self):
         if self.last_layer_only:

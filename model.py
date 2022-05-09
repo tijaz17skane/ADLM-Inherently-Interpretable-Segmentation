@@ -36,7 +36,7 @@ base_architecture_to_features = {'resnet18': resnet18_features,
 
 
 @gin.configurable(allowlist=['void_negative_weight', 'bottleneck_stride', 'patch_classification',
-                             'void_class', 'argmax_only', 'initial_tau'])
+                             'void_class', 'argmax_only'])
 class PPNet(nn.Module):
     def __init__(self, features, img_size, prototype_shape,
                  proto_layer_rf_info, num_classes, init_weights=True,
@@ -46,7 +46,6 @@ class PPNet(nn.Module):
                  bottleneck_stride: Optional[int] = None,
                  void_class: bool = True,
                  argmax_only: bool = False,
-                 initial_tau: float = 1.0,
                  patch_classification: bool = False):
 
         super(PPNet, self).__init__()
@@ -62,7 +61,7 @@ class PPNet(nn.Module):
         self.argmax_only = argmax_only
 
         if self.argmax_only:
-            self.gumbel_softmax_tau = nn.Parameter(torch.tensor(initial_tau), requires_grad=False)
+            self.gumbel_softmax_tau = nn.Parameter(torch.tensor(1.0), requires_grad=False)
 
         # prototype_activation_function could be 'log', 'linear',
         # or a generic function that converts distance to similarity score
