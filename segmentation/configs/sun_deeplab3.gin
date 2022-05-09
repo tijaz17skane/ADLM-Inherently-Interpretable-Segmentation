@@ -68,7 +68,7 @@ PPNet.void_negative_weight = None
 PPNet.void_class = False
 PPNet.bottleneck_stride = 1
 PPNet.patch_classification = True
-PPNet.argmax_only = True
+PPNet.argmax_only = False
 
 # For testing
 # Trainer.overfit_batches = 10
