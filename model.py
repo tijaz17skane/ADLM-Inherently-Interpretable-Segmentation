@@ -250,7 +250,8 @@ class PPNet(nn.Module):
 
                 # Sample soft categorical using reparametrization trick:
                 prototype_activations[:, cls_ind] = F.gumbel_softmax(prototype_activations[:, cls_ind],
-                                                                     tau=self.gumbel_softmax_tau.item(), hard=False)
+                                                                     tau=self.gumbel_softmax_tau.item(),
+                                                                     hard=not self.training)
 
             return self.last_layer(prototype_activations)
         else:

@@ -70,6 +70,7 @@ class PatchClassificationModule(LightningModule):
             num_warm_epochs: int = gin.REQUIRED,
             target_tau: float = 1.0,
             tau_decrease_r: float = 0.0,
+            update_tau_every_n: int = 0,
             loss_weight_crs_ent: float = gin.REQUIRED,
             loss_weight_contrastive: float = gin.REQUIRED,
             loss_weight_object: float = 0.0,
@@ -100,6 +101,7 @@ class PatchClassificationModule(LightningModule):
         self.num_warm_epochs = num_warm_epochs
         self.target_tau = target_tau
         self.tau_decrease_r = tau_decrease_r
+        self.update_tau_every_n = update_tau_every_n
         self.loss_weight_crs_ent = loss_weight_crs_ent
         self.loss_weight_contrastive = loss_weight_contrastive
         self.loss_weight_object = loss_weight_object
@@ -392,8 +394,9 @@ class PatchClassificationModule(LightningModule):
                 self.log('gumbel_softmax_tau', tau_val, on_step=True)
                 if tau_val > self.target_tau:
                     current_batch_idx = self.current_epoch * self.trainer.num_training_batches + batch_idx
-                    new_tau_val = max(self.target_tau, np.exp(-self.tau_decrease_r * current_batch_idx))
-                    self.ppnet.gumbel_softmax_tau = nn.Parameter(torch.tensor(new_tau_val), requires_grad=False)
+                    if current_batch_idx % self.update_tau_every_n == 0:
+                        new_tau_val = max(self.target_tau, np.exp(-self.tau_decrease_r * current_batch_idx))
+                        self.ppnet.gumbel_softmax_tau = nn.Parameter(torch.tensor(new_tau_val), requires_grad=False)
 
     def training_step(self, batch, batch_idx):
         return self._step('train', batch, batch_idx)
