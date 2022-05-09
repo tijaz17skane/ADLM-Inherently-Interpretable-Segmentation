@@ -62,7 +62,7 @@ class PPNet(nn.Module):
         self.argmax_only = argmax_only
 
         if self.argmax_only:
-            self.gumbel_softmax_tau = nn.Parameter(torch.tensor(initial_tau), requires_grad=True)
+            self.gumbel_softmax_tau = nn.Parameter(torch.tensor(initial_tau), requires_grad=False)
 
         # prototype_activation_function could be 'log', 'linear',
         # or a generic function that converts distance to similarity score

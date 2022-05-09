@@ -7,6 +7,7 @@ from typing import Dict, Optional
 import gin
 import numpy as np
 import torch
+from torch import nn
 from pytorch_lightning import LightningModule
 from sklearn.metrics import roc_auc_score
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -98,7 +99,7 @@ class PatchClassificationModule(LightningModule):
         self.last_layer_only = last_layer_only
         self.num_warm_epochs = num_warm_epochs
         self.target_tau = target_tau
-        self.tau_decrease_per_step = (target_tau - self.ppnet.gumbel_softmax_tau) / tau_steps_decrease
+        self.tau_decrease_per_step = (self.ppnet.gumbel_softmax_tau.item() - target_tau) / tau_steps_decrease
         self.loss_weight_crs_ent = loss_weight_crs_ent
         self.loss_weight_contrastive = loss_weight_contrastive
         self.loss_weight_object = loss_weight_object
@@ -390,7 +391,9 @@ class PatchClassificationModule(LightningModule):
                 tau_val = self.ppnet.gumbel_softmax_tau.item()
                 self.log('gumbel_softmax_tau', tau_val, on_step=True)
                 if tau_val > self.target_tau:
-                    self.ppnet.gumbel_softmax_tau = max(tau_val - self.tau_decrease_per_step, self.target_tau)
+                    self.ppnet.gumbel_softmax_tau = nn.Parameter(torch.tensor(max(tau_val - self.tau_decrease_per_step,
+                                                                                  self.target_tau)),
+                                                                 requires_grad=False)
 
     def training_step(self, batch, batch_idx):
         return self._step('train', batch)
