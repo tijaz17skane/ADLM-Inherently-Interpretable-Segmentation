@@ -36,7 +36,7 @@ base_architecture_to_features = {'resnet18': resnet18_features,
 
 
 @gin.configurable(allowlist=['void_negative_weight', 'bottleneck_stride', 'patch_classification',
-                             'void_class', 'argmax_only'])
+                             'void_class', 'argmax_only', 'initial_tau'])
 class PPNet(nn.Module):
     def __init__(self, features, img_size, prototype_shape,
                  proto_layer_rf_info, num_classes, init_weights=True,
@@ -46,6 +46,7 @@ class PPNet(nn.Module):
                  bottleneck_stride: Optional[int] = None,
                  void_class: bool = True,
                  argmax_only: bool = False,
+                 initial_tau: float = 1.0,
                  patch_classification: bool = False):
 
         super(PPNet, self).__init__()
@@ -59,6 +60,9 @@ class PPNet(nn.Module):
         self.patch_classification = patch_classification
         self.void_class = void_class
         self.argmax_only = argmax_only
+
+        if self.argmax_only:
+            self.gumbel_softmax_tau = nn.Parameter(torch.tensor(initial_tau), requires_grad=True)
 
         # prototype_activation_function could be 'log', 'linear',
         # or a generic function that converts distance to similarity score
@@ -245,11 +249,9 @@ class PPNet(nn.Module):
                 )
                 cls_ind = is_prototype_cls.nonzero()[:, 1]
 
-                max_val, _ = torch.max(prototype_activations[:, cls_ind], dim=-1)
-                max_val = max_val.unsqueeze(-1)
-
-                prototype_activations[:, cls_ind] = prototype_activations[:, cls_ind] * \
-                                                    (prototype_activations[:, cls_ind] == max_val)
+                # Sample soft categorical using reparametrization trick:
+                prototype_activations[:, cls_ind] = F.gumbel_softmax(prototype_activations[:, cls_ind],
+                                                                     tau=self.gumbel_sotmax_tau, hard=False)
 
             return self.last_layer(prototype_activations)
         else:

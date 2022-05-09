@@ -67,6 +67,8 @@ class PatchClassificationModule(LightningModule):
             ppnet: PPNet,
             last_layer_only: bool,
             num_warm_epochs: int = gin.REQUIRED,
+            target_tau: float = 1.0,
+            tau_steps_decrease: float = 0.0,
             loss_weight_crs_ent: float = gin.REQUIRED,
             loss_weight_contrastive: float = gin.REQUIRED,
             loss_weight_object: float = 0.0,
@@ -95,6 +97,8 @@ class PatchClassificationModule(LightningModule):
         self.ppnet = ppnet
         self.last_layer_only = last_layer_only
         self.num_warm_epochs = num_warm_epochs
+        self.target_tau = target_tau
+        self.tau_decrease_per_step = (target_tau - self.ppnet.gumbel_softmax_tau) / tau_steps_decrease
         self.loss_weight_crs_ent = loss_weight_crs_ent
         self.loss_weight_contrastive = loss_weight_contrastive
         self.loss_weight_object = loss_weight_object
@@ -264,7 +268,8 @@ class PatchClassificationModule(LightningModule):
             cluster_cost.append(min_cls_dists * target_cls)
 
             proto_dist = torch.cdist(cls_proto_vectors, cls_proto_vectors)
-            orthogonal_loss.append(proto_dist)
+            proto_dist = proto_dist + 10e6 * torch.triu(torch.ones_like(proto_dist, device=proto_dist.device))
+            orthogonal_loss.append(torch.min(proto_dist))
 
         # prototype relevance loss:
         # for each prototype, we want it to have at least 1 close point in the batch
@@ -381,6 +386,13 @@ class PatchClassificationModule(LightningModule):
             lr = get_lr(optimizer)
             self.log('lr', lr, on_step=True)
 
+            if self.ppnet.argmax_only:
+                tau_val = self.ppnet.gumbel_softmax_tau.item()
+                self.log('gumbel_softmax_tau', tau_val, on_step=True)
+                if tau_val > self.target_tau:
+                    self.ppnet.gumbel_softmax_tau = max(self.ppnet.gumbel_softmax_tau - self.tau_decrease_per_step,
+                                                        self.target_tau)
+
     def training_step(self, batch, batch_idx):
         return self._step('train', batch)
 
@@ -480,15 +492,15 @@ class PatchClassificationModule(LightningModule):
         self.log(f'{split_key}/separation_higher', metrics['separation_higher'] / metrics['n_patches'])
         self.log('l1', self.ppnet.last_layer.weight.norm(p=1).item())
 
+    def training_epoch_end(self, step_outputs):
+        return self._epoch_end('train')
+
+    def validation_epoch_end(self, step_outputs):
         p = self.ppnet.prototype_vectors.view(self.ppnet.num_prototypes, -1).cpu()
         with torch.no_grad():
             p_avg_pair_dist = torch.mean(list_of_distances(p, p))
         self.log('p dist pair', p_avg_pair_dist.item())
 
-    def training_epoch_end(self, step_outputs):
-        return self._epoch_end('train')
-
-    def validation_epoch_end(self, step_outputs):
         return self._epoch_end('val')
 
     def test_epoch_end(self, step_outputs):

@@ -31,13 +31,18 @@ PatchClassificationDataModule.dataloader_n_jobs = 16
 DataLoader.batch_size = 4
 
 Trainer.max_epochs = 1000
+Trainer.min_epochs = 100
 
-PatchClassificationModule.num_warm_epochs = 16
+PatchClassificationModule.num_warm_epochs = 4
+
+PatchClassificationModule.target_tau = 0.1
+PatchClassificationModule.tau_steps_decrease = 75000 # 750 * 100
 
 PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_contrastive = 0.0
+PatchClassificationModule.loss_weight_object = 0.0
 PatchClassificationModule.loss_weight_clst = 0.8
-PatchClassificationModule.loss_weight_orthogonal = -0.08
+PatchClassificationModule.loss_weight_orthogonal = 0.0
 PatchClassificationModule.loss_weight_sep = -0.08
 PatchClassificationModule.loss_weight_proto_rel = 0.0
 PatchClassificationModule.loss_weight_l1 = 1e-4
@@ -61,13 +66,14 @@ PatchClassificationModule.ignore_void_class = True
 ReduceLROnPlateau.mode = 'min'
 ReduceLROnPlateau.factor = 0.1
 ReduceLROnPlateau.patience = 20
-ReduceLROnPlateau.min_lr = 1e-7
+ReduceLROnPlateau.min_lr = 1e-6
 
 PPNet.void_negative_weight = None
 PPNet.void_class = False
 PPNet.bottleneck_stride = 1
 PPNet.patch_classification = True
-PPNet.argmax_only = False
+PPNet.argmax_only = True
+PPNet.initial_tau = 5.0
 
 # For testing
 # Trainer.overfit_batches = 10
