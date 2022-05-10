@@ -44,7 +44,7 @@ PatchClassificationModule.loss_weight_contrastive = 0.0
 PatchClassificationModule.loss_weight_object = 0.6
 PatchClassificationModule.loss_weight_clst = 0.8
 PatchClassificationModule.loss_weight_orthogonal = 0.0
-PatchClassificationModule.loss_weight_sep = -0.08
+PatchClassificationModule.loss_weight_sep = -0.16
 PatchClassificationModule.loss_weight_proto_rel = 0.0
 PatchClassificationModule.loss_weight_l1 = 1e-4
 

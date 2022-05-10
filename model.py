@@ -248,10 +248,19 @@ class PPNet(nn.Module):
                 )
                 cls_ind = is_prototype_cls.nonzero()[:, 1]
 
-                # Sample soft categorical using reparametrization trick:
-                prototype_activations[:, cls_ind] = F.gumbel_softmax(prototype_activations[:, cls_ind],
-                                                                     tau=self.gumbel_softmax_tau.item(),
-                                                                     hard=not self.training)
+                if self.training:
+                    # Sample soft categorical using reparametrization trick
+                    proto_argmax = F.gumbel_softmax(
+                        prototype_activations[:, cls_ind],
+                        tau=self.gumbel_softmax_tau.item(),
+                        hard=False
+                    )
+                else:
+                    max_val, _ = torch.max(prototype_activations[:, cls_ind], dim=-1)
+                    max_val = max_val.unsqueeze(-1)
+                    proto_argmax = prototype_activations[:, cls_ind] == max_val
+
+                prototype_activations[:, cls_ind] = prototype_activations[:, cls_ind] * proto_argmax
 
             return self.last_layer(prototype_activations)
         else:

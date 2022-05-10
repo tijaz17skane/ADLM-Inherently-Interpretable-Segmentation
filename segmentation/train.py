@@ -7,9 +7,11 @@ python -m segmentation.train cityscapes 2022_03_26_cityscapes
 """
 import os
 import shutil
+from typing import Optional
 
 import argh
 import torch
+import neptune.new as neptune
 from pytorch_lightning import Trainer, seed_everything
 import gin
 from pytorch_lightning.callbacks import EarlyStopping
@@ -32,6 +34,7 @@ Trainer = gin.external_configurable(Trainer)
 def train(
         config_path: str,
         experiment_name: str,
+        neptune_experiment: Optional[str] = None,
         pruned: bool = False,
         model_image_size: int = gin.REQUIRED,
         random_seed: int = gin.REQUIRED,
@@ -46,9 +49,14 @@ def train(
     os.makedirs(results_dir, exist_ok=True)
     log(f'Starting experiment in "{results_dir}" from config {config_path}')
 
+    last_checkpoint = os.path.join(results_dir, 'checkpoints', 'nopush_best.pth')
+
     if start_checkpoint:
         log(f'Loading checkpoint from {start_checkpoint}')
         ppnet = torch.load(start_checkpoint)
+    elif neptune_experiment is not None and os.path.exists(last_checkpoint):
+        log(f'Loading last model from {last_checkpoint}')
+        ppnet = torch.load(last_checkpoint)
     else:
         ppnet = construct_PPNet(img_size=model_image_size)
 
@@ -72,12 +80,21 @@ def train(
     if not pruned:
         use_neptune = bool(int(os.environ['USE_NEPTUNE']))
         if use_neptune:
-            neptune_logger = NeptuneLogger(
-                project="mikolajsacha/protobased-research",
-                tags=[config_path, 'patch_classification', 'protopnet'],
-                name=experiment_name
-            )
-            loggers.append(neptune_logger)
+            if neptune_experiment is not None:
+                neptune_run = neptune.init(
+                    project="mikolajsacha/protobased-research",
+                    run=neptune_experiment
+                )
+                neptune_logger = NeptuneLogger(
+                    run=neptune_run
+                )
+            else:
+                neptune_logger = NeptuneLogger(
+                    project="mikolajsacha/protobased-research",
+                    tags=[config_path, 'patch_classification', 'protopnet'],
+                    name=experiment_name
+                )
+                loggers.append(neptune_logger)
 
             neptune_run = neptune_logger.run
             neptune_run['config_file'].upload(f'segmentation/configs/{config_path}.gin')
@@ -99,6 +116,8 @@ def train(
 
         trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
                           enable_progress_bar=False)
+        if start_epoch != 0:
+            trainer.fit_loop.current_epoch = start_epoch
 
         trainer.fit(model=module, datamodule=data_module)
 
