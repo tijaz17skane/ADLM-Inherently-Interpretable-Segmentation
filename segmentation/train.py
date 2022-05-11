@@ -200,11 +200,12 @@ def train(
 def load_config_and_train(
         config_path: str,
         experiment_name: str,
+        neptune_experiment: Optional[str] = None,
         pruned: bool = False,
         start_epoch: int = 0
 ):
     gin.parse_config_file(f'segmentation/configs/{config_path}.gin')
-    train(config_path, experiment_name, pruned=pruned, start_epoch=start_epoch)
+    train(config_path, experiment_name, pruned=pruned, start_epoch=start_epoch, neptune_experiment=neptune_experiment)
 
 
 if __name__ == '__main__':

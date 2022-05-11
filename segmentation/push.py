@@ -155,7 +155,7 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
 
     segmentation_result = get_image_segmentation(dataset, ppnet, img,
                                                  window_size=dataset.window_size,
-                                                 window_shift=256,
+                                                 window_shift=512,
                                                  batch_size=4)
 
     protoL_input_ = segmentation_result['conv_features']

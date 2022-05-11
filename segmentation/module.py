@@ -88,6 +88,7 @@ class PatchClassificationModule(LightningModule):
             warm_optimizer_weight_decay: float = gin.REQUIRED,
             last_layer_optimizer_lr: float = gin.REQUIRED,
             warmup_batches: int = gin.REQUIRED,
+            decrease_lr_after_batches: int = 0,
             gradient_clipping: Optional[float] = gin.REQUIRED,
             ignore_void_class: bool = False
     ):
@@ -119,6 +120,7 @@ class PatchClassificationModule(LightningModule):
         self.warm_optimizer_weight_decay = warm_optimizer_weight_decay
         self.last_layer_optimizer_lr = last_layer_optimizer_lr
         self.warmup_batches = warmup_batches
+        self.decrease_lr_after_batches = decrease_lr_after_batches
         self.gradient_clipping = gradient_clipping
         self.ignore_void_class = ignore_void_class
 
@@ -377,6 +379,10 @@ class PatchClassificationModule(LightningModule):
 
             update_lr_warmup(optimizer, self.trainer.global_step, self.warmup_batches)
 
+            if 0 < self.decrease_lr_after_batches == self.trainer.global_step:
+                for pg in optimizer.param_groups:
+                    pg['lr'] = 0.1 * optimizer.defaults['lr']
+
             optimizer.zero_grad()
             self.manual_backward(loss)
 
@@ -393,9 +399,8 @@ class PatchClassificationModule(LightningModule):
                 tau_val = self.ppnet.gumbel_softmax_tau.item()
                 self.log('gumbel_softmax_tau', tau_val, on_step=True)
                 if tau_val > self.target_tau:
-                    current_batch_idx = self.current_epoch * self.trainer.num_training_batches + batch_idx
-                    if current_batch_idx % self.update_tau_every_n == 0:
-                        new_tau_val = max(self.target_tau, np.exp(-self.tau_decrease_r * current_batch_idx))
+                    if self.trainer.global_step % self.update_tau_every_n == 0:
+                        new_tau_val = max(self.target_tau, np.exp(-self.tau_decrease_r * self.trainer.global_step))
                         self.ppnet.gumbel_softmax_tau = nn.Parameter(torch.tensor(new_tau_val), requires_grad=False)
 
     def training_step(self, batch, batch_idx):
