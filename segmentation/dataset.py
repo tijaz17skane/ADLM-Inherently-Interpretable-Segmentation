@@ -232,8 +232,8 @@ class PatchClassificationDataset(VisionDataset):
                 v_shift = 0
             else:
                 # shift image randomly
-                h_shift = np.random.randint(-self.image_margin_size, self.image_margin_size + 1)
-                v_shift = np.random.randint(-self.image_margin_size, self.image_margin_size + 1)
+                h_shift = np.random.randint(-self.patch_size, self.patch_size + 1)
+                v_shift = np.random.randint(-self.patch_size, self.patch_size + 1)
 
             img = img[self.image_margin_size + h_shift:-self.image_margin_size + h_shift,
                   self.image_margin_size + v_shift:-self.image_margin_size + v_shift]

@@ -242,25 +242,34 @@ class PPNet(nn.Module):
     
     def run_last_layer(self, prototype_activations):
         if hasattr(self, 'argmax_only') and self.argmax_only:
+
+            # TODO try/catch if no such attribute
+            tau = self.gumbel_softmax_tau.item()
+
             for cls_i in range(self.prototype_class_identity.shape[1]):
-                is_prototype_cls = (self.prototype_class_identity[:, cls_i] == 1).unsqueeze(0).to(
-                    prototype_activations.device
-                )
-                cls_ind = is_prototype_cls.nonzero()[:, 1]
+                # TODO: Do it smart but fast
+                # is_prototype_cls = (self.prototype_class_identity[:, cls_i] == 1).unsqueeze(0).to(
+                    # prototype_activations.device
+                # )
+                # cls_ind = is_prototype_cls.nonzero()[:, 1]
+
+                # TODO: Un-hardcode "10"
+                cls_proto_activations = prototype_activations[:, cls_i * 10: (cls_i + 1) * 10]
+                # prototype_activations[:, cls_ind],
 
                 if self.training:
                     # Sample soft categorical using reparametrization trick
                     proto_argmax = F.gumbel_softmax(
-                        prototype_activations[:, cls_ind],
-                        tau=self.gumbel_softmax_tau.item(),
+                        cls_proto_activations,
+                        tau=tau,
                         hard=False
                     )
                 else:
-                    max_val, _ = torch.max(prototype_activations[:, cls_ind], dim=-1)
+                    max_val, _ = torch.max(cls_proto_activations, dim=-1)
                     max_val = max_val.unsqueeze(-1)
-                    proto_argmax = prototype_activations[:, cls_ind] == max_val
+                    proto_argmax = cls_proto_activations == max_val
 
-                prototype_activations[:, cls_ind] = prototype_activations[:, cls_ind] * proto_argmax
+                prototype_activations[:, cls_i * 10: (cls_i + 1) * 10] = cls_proto_activations * proto_argmax
 
             return self.last_layer(prototype_activations)
         else:

@@ -42,10 +42,10 @@ def reset_metrics() -> Dict:
         'cluster_cost': 0,
         'separation': 0,
         'separation_higher': 0,
-        'contrastive_loss': 0,
-        'orthogonal_loss': 0,
-        'object_dist_loss': 0,
-        'prototype_relevance_loss': 0,
+        # 'contrastive_loss': 0,
+        # 'orthogonal_loss': 0,
+        # 'object_dist_loss': 0,
+        # 'prototype_relevance_loss': 0,
         'loss': 0
     }
 
@@ -158,14 +158,14 @@ class PatchClassificationModule(LightningModule):
             image, target, object_mask = batch
 
             # make object IDs unique within batch
-            sample_idx = torch.arange(object_mask.shape[0], device=object_mask.device).unsqueeze(-1).unsqueeze(-1)
-            max_obj_num = torch.max(object_mask)
-            object_mask = (sample_idx * max_obj_num) + object_mask
+            # sample_idx = torch.arange(object_mask.shape[0], device=object_mask.device).unsqueeze(-1).unsqueeze(-1)
+            # max_obj_num = torch.max(object_mask)
+            # object_mask = (sample_idx * max_obj_num) + object_mask
 
         image = image.to(self.device)
         target = target.to(self.device).to(torch.float32)
-        if object_mask is not None:
-            object_mask = object_mask.to(self.device).to(torch.float32)
+        # if object_mask is not None:
+            # object_mask = object_mask.to(self.device).to(torch.float32)
 
         output, patch_distances, patch_features = self.ppnet.forward_with_features(image)
 
@@ -174,7 +174,7 @@ class PatchClassificationModule(LightningModule):
         # target_flat = target.reshape(-1, target.shape[-1])
 
         output_flat = output.reshape(-1, output.shape[-1])
-        features_flat = patch_features.reshape(-1, patch_features.shape[-1])
+        # features_flat = patch_features.permute(0, 2, 3, 1).reshape(-1, patch_features.shape[1])
         dist_flat = patch_distances.permute(0, 2, 3, 1).reshape(-1, patch_distances.shape[1])
 
         if target.ndim > 3:
@@ -211,21 +211,21 @@ class PatchClassificationModule(LightningModule):
             metrics['fp'] += torch.sum(~is_correct * (1 - target_flat)).item()
             metrics['fn'] += torch.sum(~is_correct * target_flat).item()
 
-            target_oh = target_flat
+            # target_oh = target_flat
         else:
             target_flat = target.flatten()
 
-            if object_mask is not None:
-                object_mask_flat = object_mask.flatten()
+            # if object_mask is not None:
+                # object_mask_flat = object_mask.flatten()
 
             if self.ignore_void_class:
                 target_not_void = (target_flat != 0).nonzero().squeeze()
                 target_flat = target_flat[target_not_void] - 1
                 output_flat = output_flat[target_not_void]
-                features_flat = features_flat[target_not_void]
+                # features_flat = features_flat[target_not_void]
                 dist_flat = dist_flat[target_not_void]
-                if object_mask is not None:
-                    object_mask_flat = object_mask_flat[target_not_void]
+                # if object_mask is not None:
+                    # object_mask_flat = object_mask_flat[target_not_void]
 
             cross_entropy = torch.nn.functional.cross_entropy(
                 output_flat,
@@ -236,45 +236,71 @@ class PatchClassificationModule(LightningModule):
             output_class = torch.argmax(output_sigmoid, dim=-1)
             is_correct = output_class == target_flat
 
-            target_oh = torch.nn.functional.one_hot(target_flat.long(), num_classes=self.ppnet.num_classes)
+            # target_oh = torch.nn.functional.one_hot(target_flat.long(), num_classes=self.ppnet.num_classes)
 
         l1_mask = 1 - torch.t(self.ppnet.prototype_class_identity).to(self.device)
         l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
 
         metrics['n_batches'] += 1
 
-        separation, cluster_cost, orthogonal_loss = [], [], []
+        # separation, cluster_cost = [], []
 
-        if self.ignore_void_class:
-            n_p_per_class = self.ppnet.num_prototypes // self.ppnet.num_classes
-        else:
-            n_p_per_class = self.ppnet.num_prototypes // (self.ppnet.num_classes - 1)
+        # if self.ignore_void_class:
+            # n_p_per_class = self.ppnet.num_prototypes // self.ppnet.num_classes
+        # else:
+            # n_p_per_class = self.ppnet.num_prototypes // (self.ppnet.num_classes - 1)
 
-        flat_proto_vectors = self.ppnet.prototype_vectors.view(self.ppnet.num_prototypes, -1)
+        max_dist = (self.ppnet.prototype_shape[1]
+                    * self.ppnet.prototype_shape[2]
+                    * self.ppnet.prototype_shape[3])
+
+        # prototypes_of_correct_class is a tensor of shape batch_size * num_prototypes
+        # calculate cluster cost
+        prototypes_of_correct_class = torch.t(torch.index_select(
+            self.ppnet.prototype_class_identity.to(self.device),
+            dim=-1,
+            index=target_flat
+        )).to(self.device)
+
+        inverted_distances, _ = torch.max((max_dist - dist_flat) * prototypes_of_correct_class, dim=1)
+        cluster_cost = max_dist - inverted_distances
+
+        # calculate separation cost
+        prototypes_of_wrong_class = 1 - prototypes_of_correct_class
+        inverted_distances_to_nontarget_prototypes, _ = \
+            torch.max((max_dist - dist_flat) * prototypes_of_wrong_class, dim=1)
+
+        separation = max_dist - inverted_distances_to_nontarget_prototypes
+
+        separation_higher = torch.sum(separation > cluster_cost).item()
+        cluster_cost = torch.mean(cluster_cost)
+        separation = torch.mean(separation)
+
+        # flat_proto_vectors = self.ppnet.prototype_vectors.view(self.ppnet.num_prototypes, -1)
 
         # TODO maybe we can do it even smarter without the loop
-        for cls_i in range(target_oh.shape[1]):
-            if cls_i == 0 and not self.ignore_void_class:
-                # ignore 'void' class in loop
-                continue
+        # for cls_i in range(target_oh.shape[1]):
+            # if cls_i == 0 and not self.ignore_void_class:
+                # # ignore 'void' class in loop
+                # continue
 
-            if self.ignore_void_class:
-                cls_dists = dist_flat[:, cls_i * n_p_per_class:(cls_i + 1) * n_p_per_class]
-                cls_proto_vectors = flat_proto_vectors[cls_i * n_p_per_class:(cls_i + 1) * n_p_per_class]
-            else:
-                cls_dists = dist_flat[:, (cls_i - 1) * n_p_per_class:cls_i * n_p_per_class]
-                cls_proto_vectors = flat_proto_vectors[(cls_i - 1) * n_p_per_class:cls_i * n_p_per_class]
+            # if self.ignore_void_class:
+                # cls_dists = dist_flat[:, cls_i * n_p_per_class:(cls_i + 1) * n_p_per_class]
+                # cls_proto_vectors = flat_proto_vectors[cls_i * n_p_per_class:(cls_i + 1) * n_p_per_class]
+            # else:
+                # cls_dists = dist_flat[:, (cls_i - 1) * n_p_per_class:cls_i * n_p_per_class]
+                # cls_proto_vectors = flat_proto_vectors[(cls_i - 1) * n_p_per_class:cls_i * n_p_per_class]
 
-            min_cls_dists, _ = torch.min(cls_dists, dim=-1)
-            target_cls = target_oh[:, cls_i]
+            # min_cls_dists, _ = torch.min(cls_dists, dim=-1)
+            # target_cls = target_oh[:, cls_i]
 
             # we want to minimize cluster_cost and maximize separation
-            separation.append((1 - target_cls) * min_cls_dists + 512 * target_cls)
-            cluster_cost.append(min_cls_dists * target_cls)
+            # separation.append((1 - target_cls) * min_cls_dists + 512 * target_cls)
+            # cluster_cost.append(min_cls_dists * target_cls)
 
-            proto_dist = torch.cdist(cls_proto_vectors, cls_proto_vectors)
-            proto_dist = proto_dist + 10e6 * torch.triu(torch.ones_like(proto_dist, device=proto_dist.device))
-            orthogonal_loss.append(torch.min(proto_dist))
+            # proto_dist = torch.cdist(cls_proto_vectors, cls_proto_vectors)
+            # proto_dist = proto_dist + 10e6 * torch.triu(torch.ones_like(proto_dist, device=proto_dist.device))
+            # orthogonal_loss.append(torch.min(proto_dist))
 
         # prototype relevance loss:
         # for each prototype, we want it to have at least 1 close point in the batch
@@ -284,67 +310,63 @@ class PatchClassificationModule(LightningModule):
 
         # (batch_size, num_classes) x (num_classes, num_prototypes) = (batch_size, num_prototypes)
         # target_proto_identity.shape = (batch_size, num_prototypes)
-        target_proto_identity = torch.matmul(target_oh.float(),
-                                             self.ppnet.prototype_class_identity.to(target_oh.device).float().T)
+        # target_proto_identity = torch.matmul(target_oh.float(),
+                                             # self.ppnet.prototype_class_identity.to(target_oh.device).float().T)
 
         # proto_dist_correct_class.shape = (num_prototypes, batch_size)
-        proto_dist_correct_class = (dist_flat + 10e6 * (target_proto_identity != 1)).T
+        # proto_dist_correct_class = (dist_flat + 10e6 * (target_proto_identity != 1)).T
 
         # proto_rel_loss.shape = (num_prototypes, )
-        proto_rel_loss, _ = torch.min(proto_dist_correct_class, dim=-1)
+        # proto_rel_loss, _ = torch.min(proto_dist_correct_class, dim=-1)
 
-        is_cls_present = (proto_rel_loss < 10e6).nonzero().squeeze()
-        proto_rel_loss = proto_rel_loss[is_cls_present]
-        if len(proto_rel_loss) > 0:
-            proto_rel_loss = torch.mean(proto_rel_loss)
-        else:
-            proto_rel_loss = 0.0
+        # is_cls_present = (proto_rel_loss < 10e6).nonzero().squeeze()
+        # proto_rel_loss = proto_rel_loss[is_cls_present]
+        # if len(proto_rel_loss) > 0:
+            # proto_rel_loss = torch.mean(proto_rel_loss)
+        # else:
+            # proto_rel_loss = 0.0
 
         # separation cost = minimum over distances to all classes that have score==0.0
-        separation = torch.stack(separation, dim=-1)
-        separation, _ = torch.min(separation, dim=-1)
+        # separation = torch.stack(separation, dim=-1)
+        # separation, _ = torch.min(separation, dim=-1)
 
         # cluster cost = maximum over distances to all classes that have score!=0.0
-        cluster_cost = torch.stack(cluster_cost, dim=-1)
-        cluster_cost, _ = torch.max(cluster_cost, dim=-1)
+        # cluster_cost = torch.stack(cluster_cost, dim=-1)
+        # cluster_cost, _ = torch.max(cluster_cost, dim=-1)
 
         # try contrastive loss formulation (we want higher 'logits' for separation than for cluster cost)
-        contrastive_input = torch.stack((cluster_cost, separation), dim=-1)
-        contrastive_target = torch.ones(contrastive_input.shape[0], device=contrastive_input.device, dtype=torch.long)
-        contrastive_loss = torch.nn.functional.cross_entropy(contrastive_input, contrastive_target)
-
-        separation_higher = torch.sum(separation > cluster_cost)
-        cluster_cost = torch.mean(cluster_cost)
-        separation = torch.mean(separation)
+        # contrastive_input = torch.stack((cluster_cost, separation), dim=-1)
+        # contrastive_target = torch.ones(contrastive_input.shape[0], device=contrastive_input.device, dtype=torch.long)
+        # contrastive_loss = torch.nn.functional.cross_entropy(contrastive_input, contrastive_target)
 
         # orthogonal loss - prototypes of same class should be away from each other
-        orthogonal_loss = torch.mean(torch.stack(orthogonal_loss))
+        # orthogonal_loss = torch.mean(torch.stack(orthogonal_loss))
 
-        if object_mask is None:
-            object_dist_loss = 0.0
-        else:
-            object_dist_loss = []
-            # TODO maybe we can do this smarter without the loop
-            for i in torch.unique(object_mask_flat):
-                same_object = (object_mask_flat == i).nonzero().squeeze()
-                if same_object.ndim > 0 and len(same_object) > 1:
-                    obj_features = features_flat[same_object]
-                    mean_feature = torch.mean(obj_features, dim=-1)
-                    mean_dist_to_mean = torch.mean(torch.cdist(mean_feature.unsqueeze(0), obj_features.T))
-                    object_dist_loss.append(mean_dist_to_mean)
-
-            if len(object_dist_loss) > 0:
-                object_dist_loss = torch.mean(torch.stack(object_dist_loss))
-            else:
-                object_dist_loss = 0.0
+        # if object_mask is None:
+            # object_dist_loss = 0.0
+        # else:
+            # object_dist_loss = []
+            # # TODO maybe we can do this smarter without the loop
+            # for i in torch.unique(object_mask_flat):
+                # same_object = (object_mask_flat == i).nonzero().squeeze()
+                # if same_object.ndim > 0 and len(same_object) > 1:
+                    # obj_features = features_flat[same_object]
+                    # mean_feature = torch.mean(obj_features, dim=-1)
+                    # mean_dist_to_mean = torch.mean(torch.cdist(mean_feature.unsqueeze(0), obj_features.T))
+                    # object_dist_loss.append(mean_dist_to_mean)
+#
+            # if len(object_dist_loss) > 0:
+                # object_dist_loss = torch.mean(torch.stack(object_dist_loss))
+            # else:
+                # object_dist_loss = 0.0
 
         loss = (self.loss_weight_crs_ent * cross_entropy +
-                self.loss_weight_contrastive * contrastive_loss +
+                # self.loss_weight_contrastive * contrastive_loss +
                 self.loss_weight_clst * cluster_cost +
                 self.loss_weight_sep * separation +
-                self.loss_weight_object * object_dist_loss +
-                self.loss_weight_orthogonal * orthogonal_loss +
-                self.loss_weight_proto_rel * proto_rel_loss +
+                # self.loss_weight_object * object_dist_loss +
+                # self.loss_weight_orthogonal * orthogonal_loss +
+                # self.loss_weight_proto_rel * proto_rel_loss +
                 self.loss_weight_l1 * l1)
 
         loss_value = loss.item()
@@ -352,15 +374,15 @@ class PatchClassificationModule(LightningModule):
         if not np.isnan(loss_value):
             metrics['loss'] += loss_value
             metrics['cross_entropy'] += cross_entropy.item()
-            metrics['contrastive_loss'] += contrastive_loss.item()
+            # metrics['contrastive_loss'] += contrastive_loss.item()
             metrics['cluster_cost'] += cluster_cost.item()
-            if object_mask is not None:
-                metrics['object_dist_loss'] += object_dist_loss if isinstance(object_dist_loss, float) \
-                    else object_dist_loss.item()
+            # if object_mask is not None:
+                # metrics['object_dist_loss'] += object_dist_loss if isinstance(object_dist_loss, float) \
+                    # else object_dist_loss.item()
             metrics['separation'] += separation.item()
-            metrics['separation_higher'] += separation_higher.item()
-            metrics['orthogonal_loss'] += orthogonal_loss.item()
-            metrics['prototype_relevance_loss'] += proto_rel_loss.item()
+            metrics['separation_higher'] += separation_higher
+            # metrics['orthogonal_loss'] += orthogonal_loss.item()
+            # metrics['prototype_relevance_loss'] += proto_rel_loss.item()
             metrics['n_examples'] += target_flat.size(0)
             metrics['n_correct'] += torch.sum(is_correct)
             n_patches = output_flat.shape[0]
@@ -472,8 +494,7 @@ class PatchClassificationModule(LightningModule):
         metrics = self.metrics[split_key]
         n_batches = metrics['n_batches']
 
-        for key in ['loss', 'contrastive_loss', 'cross_entropy', 'cluster_cost',
-                    'separation', 'object_dist_loss', 'orthogonal_loss', 'prototype_relevance_loss']:
+        for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         if len(metrics['pos_scores']) > 0 or len(metrics['neg_scores']) > 0:
