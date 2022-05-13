@@ -5,15 +5,15 @@ Trainer.gpus = 1
 construct_PPNet.base_architecture = 'deeplabv3_resnet50'
 construct_PPNet.pretrained = True
 
-construct_PPNet.prototype_shape = (270, 256, 1, 1)
-construct_PPNet.num_classes = 27
+construct_PPNet.prototype_shape = (200, 256, 1, 1)
+construct_PPNet.num_classes = 20
 construct_PPNet.prototype_activation_function = 'log'
 construct_PPNet.add_on_layers_type = 'bottleneck_pool'
 
 train.model_image_size = 1024
 train.random_seed = 20220227
-train.early_stopping_patience_main = 32
-train.early_stopping_patience_last_layer = 32
+train.early_stopping_patience_main = 500
+train.early_stopping_patience_last_layer = 64
 train.start_checkpoint = ''
 
 # mean and STD taken from deeplabv3 trained on COCO
@@ -22,31 +22,32 @@ PatchClassificationDataset.std = [0.229, 0.224, 0.225]
 PatchClassificationDataset.transpose_ann = False
 PatchClassificationDataset.image_margin_size = 512
 PatchClassificationDataset.patch_size = 1
-PatchClassificationDataset.num_classes = 29
-PatchClassificationDataset.window_size = (512, 512)
+PatchClassificationDataset.num_classes = 20
+PatchClassificationDataset.window_size = (769, 769)
 PatchClassificationDataset.object_masks = True
+PatchClassificationDataset.only_19_from_cityscapes = True
 
 PatchClassificationDataModule.push_length_multiplier = 32
 PatchClassificationDataModule.dataloader_n_jobs = 16
-DataLoader.batch_size = 4
+DataLoader.batch_size = 16
 
-Trainer.max_epochs = 1000
-Trainer.min_epochs = 100
+Trainer.max_epochs = 500
+Trainer.min_epochs = 350
 
-PatchClassificationModule.num_warm_epochs = 4
+PatchClassificationModule.num_warm_epochs = 0  # no warm-up yet (try later)
 
 PatchClassificationModule.target_tau = 0.5
-PatchClassificationModule.tau_decrease_r = 0.00001
-PatchClassificationModule.update_tau_every_n = 2000
+PatchClassificationModule.tau_decrease_r = 0.000015 # ~0.5 after 250 epochs
+PatchClassificationModule.update_tau_every_n = 1000
 
-PatchClassificationModule.decrease_lr_after_batches = 30000 # ~40 epochs
+PatchClassificationModule.decrease_lr_after_batches = 55800 # ~300 epochs
 
 PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_contrastive = 0.0
 PatchClassificationModule.loss_weight_object = 0.0
-PatchClassificationModule.loss_weight_clst = 0.6
+PatchClassificationModule.loss_weight_clst = 0.0
 PatchClassificationModule.loss_weight_orthogonal = 0.0
-PatchClassificationModule.loss_weight_sep = -0.16
+PatchClassificationModule.loss_weight_sep = 0.0
 PatchClassificationModule.loss_weight_proto_rel = 0.0
 PatchClassificationModule.loss_weight_l1 = 1e-4
 
@@ -61,15 +62,15 @@ PatchClassificationModule.warm_optimizer_weight_decay = 1e-5
 
 PatchClassificationModule.last_layer_optimizer_lr = 5e-4
 
-PatchClassificationModule.warmup_batches = 1000
+PatchClassificationModule.warmup_batches = 186
 PatchClassificationModule.gradient_clipping = 100
 
 PatchClassificationModule.ignore_void_class = True
 
 ReduceLROnPlateau.mode = 'min'
 ReduceLROnPlateau.factor = 0.1
-ReduceLROnPlateau.patience = 20
-ReduceLROnPlateau.min_lr = 1e-6
+ReduceLROnPlateau.patience = 100
+ReduceLROnPlateau.min_lr = 1e-5
 
 PPNet.void_negative_weight = None
 PPNet.void_class = False

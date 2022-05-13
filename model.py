@@ -242,9 +242,8 @@ class PPNet(nn.Module):
     
     def run_last_layer(self, prototype_activations):
         if hasattr(self, 'argmax_only') and self.argmax_only:
-
-            # TODO try/catch if no such attribute
-            tau = self.gumbel_softmax_tau.item()
+            tau = self.gumbel_softmax_tau.item() if hasattr(self, 'gumbel_softmax_tau') else 0.5
+            new_prototype_activations = []
 
             for cls_i in range(self.prototype_class_identity.shape[1]):
                 # TODO: Do it smart but fast
@@ -269,7 +268,9 @@ class PPNet(nn.Module):
                     max_val = max_val.unsqueeze(-1)
                     proto_argmax = cls_proto_activations == max_val
 
-                prototype_activations[:, cls_i * 10: (cls_i + 1) * 10] = cls_proto_activations * proto_argmax
+                new_prototype_activations.append(cls_proto_activations * proto_argmax)
+
+            prototype_activations = torch.cat(new_prototype_activations, dim=-1)
 
             return self.last_layer(prototype_activations)
         else:

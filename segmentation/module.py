@@ -259,7 +259,7 @@ class PatchClassificationModule(LightningModule):
         prototypes_of_correct_class = torch.t(torch.index_select(
             self.ppnet.prototype_class_identity.to(self.device),
             dim=-1,
-            index=target_flat
+            index=target_flat.long()
         )).to(self.device)
 
         inverted_distances, _ = torch.max((max_dist - dist_flat) * prototypes_of_correct_class, dim=1)
@@ -399,17 +399,26 @@ class PatchClassificationModule(LightningModule):
                 else:
                     optimizer = main_optim
 
-            update_lr_warmup(optimizer, self.trainer.global_step, self.warmup_batches)
+            # TODO: This are temporary changes to fit deeplabv3 schedule, they need to be coded nicely
+            # update_lr_warmup(optimizer, self.trainer.global_step, self.warmup_batches)
 
-            if 0 < self.decrease_lr_after_batches == self.trainer.global_step:
-                for pg in optimizer.param_groups:
-                    pg['lr'] = 0.1 * optimizer.defaults['lr']
+            # # if 0 < self.decrease_lr_after_batches == self.trainer.global_step:
+                # for pg in optimizer.param_groups:
+                    # pg['lr'] = 0.1 * optimizer.defaults['lr']
+
+            # "poly" learning rate from deeplabv3 paper
+            power = 0.9
+            max_step = 400 * 186
+            optimizer.defaults['lr'] = 0.007
+
+            for pg in optimizer.param_groups:
+                pg['lr'] = max(optimizer.defaults['lr'] * ((1 - self.trainer.global_step/max_step) ** power), 0.000001)
 
             optimizer.zero_grad()
             self.manual_backward(loss)
 
-            if self.gradient_clipping is not None:
-                torch.nn.utils.clip_grad_norm_(self.ppnet.parameters(), self.gradient_clipping)
+            # if self.gradient_clipping is not None:
+                # torch.nn.utils.clip_grad_norm_(self.ppnet.parameters(), self.gradient_clipping)
 
             optimizer.step()
             self.log('train_loss_step', loss_value, on_step=True, prog_bar=True)
@@ -458,7 +467,7 @@ class PatchClassificationModule(LightningModule):
         if self.last_layer_only:
             self.log('training_stage', 2.0)
             stage_key = 'push'
-            self.lr_scheduler.step(val_loss)
+            # self.lr_scheduler.step(val_loss)
         else:
             if self.current_epoch < self.num_warm_epochs:
                 # noinspection PyUnresolvedReferences
@@ -468,7 +477,7 @@ class PatchClassificationModule(LightningModule):
                 # noinspection PyUnresolvedReferences
                 self.log('training_stage', 1.0)
                 stage_key = 'nopush'
-                self.lr_scheduler.step(val_loss)
+                # self.lr_scheduler.step(val_loss)
 
         if val_loss < self.best_loss:
             log(f'Saving best model, loss: ' + str(val_loss))
@@ -579,6 +588,6 @@ class PatchClassificationModule(LightningModule):
                     }
                 ]
         main_optimizer = torch.optim.Adam(main_optimizer_specs)
-        self.lr_scheduler = ReduceLROnPlateau(main_optimizer)
+        # self.lr_scheduler = ReduceLROnPlateau(main_optimizer)
 
         return warm_optimizer, main_optimizer

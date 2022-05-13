@@ -11,13 +11,14 @@ from torchvision import transforms
 import os
 import gin
 
+from segmentation.constants import CITYSCAPES_19_EVAL_CATEGORIES
 from settings import data_path, log
 
 import numpy as np
 
 
 @gin.configurable(allowlist=['mean', 'std', 'transpose_ann', 'image_margin_size', 'patch_size', 'num_classes',
-                             'window_size', 'object_masks'])
+                             'window_size', 'object_masks', 'only_19_from_cityscapes'])
 class PatchClassificationDataset(VisionDataset):
     def __init__(
             self,
@@ -33,7 +34,9 @@ class PatchClassificationDataset(VisionDataset):
             num_classes: float = gin.REQUIRED,
             length_multiplier: int = 1,
             window_size: Optional[Tuple[float, float]] = None,
-            object_masks: bool = False
+            object_masks: bool = False,
+            only_19_from_cityscapes: bool = False
+
     ):
         self.length_multiplier = length_multiplier
         self.mean = mean
@@ -49,6 +52,12 @@ class PatchClassificationDataset(VisionDataset):
         self.num_classes = num_classes
         self.window_size = window_size
         self.object_masks = object_masks
+        self.only_19_from_cityscapes = only_19_from_cityscapes
+
+        if self.only_19_from_cityscapes:
+            self.convert_targets = np.vectorize(CITYSCAPES_19_EVAL_CATEGORIES.get)
+        else:
+            self.convert_targets = None
 
         # we generated cityscapes images with max margin earlier
         self.img_dir = os.path.join(data_path, f'img_with_margin_{self.image_margin_size}/{split_key}')
@@ -141,6 +150,9 @@ class PatchClassificationDataset(VisionDataset):
             index = int(index / self.length_multiplier)
             img_id = self.img_ids[index]
             img, ann = self._load_img_and_ann(index, img_id)
+
+            if self.convert_targets is not None:
+                ann = self.convert_targets(ann)
 
             full_ann = np.full((img.shape[0], img.shape[1]), fill_value=-1)
             full_ann[self.image_margin_size:-self.image_margin_size,
@@ -293,7 +305,7 @@ class PatchClassificationDataset(VisionDataset):
 
             return img, target.copy(), obj_mask.copy() if obj_mask is not None else np.zeros_like(target)
         except Exception as e:
-            log(f'EXCEPTION: {str(e)}')
+            # log(f'EXCEPTION: {str(e)}') # TODO log
             return np.zeros((3, self.window_size[0], self.window_size[1]), dtype=np.float32), \
                    np.zeros((self.window_size[0], self.window_size[1])), \
                    np.zeros((self.window_size[0], self.window_size[1]))
