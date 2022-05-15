@@ -11,7 +11,8 @@ from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 from torchvision import transforms
 
-from settings import data_path
+from settings import data_path, log
+
 
 # Try this out in case of high RAM usage:
 # import torch.multiprocessing
@@ -54,6 +55,7 @@ class ImageClassificationDataModule(LightningDataModule):
         )
 
     def train_dataloader(self, **kwargs):
+        log('Loading train data')
         train_split = ImageFolder(
             os.path.join(data_path, 'train'),
             transforms.Compose([
@@ -63,9 +65,11 @@ class ImageClassificationDataModule(LightningDataModule):
                 transforms.Resize(size=(self.model_image_size, self.model_image_size)),
                 transforms.Normalize(mean=self.norm_mean, std=self.norm_std),
             ]))
+        log('Train data loaded!')
         return self.get_data_loader(train_split, shuffle=True, batch_size=self.train_batch_size, **kwargs)
 
     def val_dataloader(self, **kwargs):
+        log('Loading val data')
         val_split = ImageFolder(
             os.path.join(data_path, 'val'),
             transforms.Compose([
@@ -73,16 +77,19 @@ class ImageClassificationDataModule(LightningDataModule):
                 transforms.ToTensor(),
                 transforms.Normalize(mean=self.norm_mean, std=self.norm_std)
             ]))
+        log('Val data loaded!')
         return self.get_data_loader(val_split, shuffle=False, batch_size=self.test_batch_size, **kwargs)
 
     def test_dataloader(self, **kwargs):
         return self.val_dataloader(**kwargs)
 
     def train_push_dataloader(self, **kwargs):
+        log('Loading train (push) data')
         train_push_split = ImageFolder(
             os.path.join(data_path, 'train'),
             transforms.Compose([
                 transforms.Resize(size=(self.model_image_size, self.model_image_size)),
                 transforms.ToTensor(),
             ]))
+        log('Train data loaded!')
         return self.get_data_loader(train_push_split, shuffle=False, batch_size=self.train_push_batch_size, **kwargs)
