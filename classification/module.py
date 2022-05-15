@@ -55,7 +55,8 @@ class ImageClassificationModule(LightningModule):
             warm_optimizer_weight_decay: float = gin.REQUIRED,
             last_layer_optimizer_lr: float = gin.REQUIRED,
             lr_step_size: int = gin.REQUIRED,
-            lr_gamma: float = gin.REQUIRED
+            lr_gamma: float = gin.REQUIRED,
+            gradient_clipping: float = gin.REQUIRED
     ):
         super().__init__()
         self.model_dir = model_dir
@@ -79,6 +80,7 @@ class ImageClassificationModule(LightningModule):
         self.last_layer_optimizer_lr = last_layer_optimizer_lr
         self.lr_step_size = lr_step_size
         self.lr_gamma = lr_gamma
+        self.gradient_clipping = gradient_clipping
 
         os.makedirs(self.prototypes_dir, exist_ok=True)
         os.makedirs(self.checkpoints_dir, exist_ok=True)
@@ -165,6 +167,9 @@ class ImageClassificationModule(LightningModule):
 
             optimizer.zero_grad()
             self.manual_backward(loss)
+
+            if self.gradient_clipping is not None:
+                torch.nn.utils.clip_grad_norm_(self.ppnet.parameters(), self.gradient_clipping)
 
             optimizer.step()
             self.log('train_loss_step', loss_value, on_step=True, prog_bar=True)
