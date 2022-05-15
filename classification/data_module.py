@@ -60,9 +60,10 @@ class ImageClassificationDataModule(LightningDataModule):
             os.path.join(data_path, 'train'),
             transforms.Compose([
                 transforms.ToTensor(),
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomAffine(degrees=45, shear=10, scale=(0.5, 1.0)),
                 transforms.Resize(size=(self.model_image_size, self.model_image_size)),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomAffine(degrees=45, shear=10),
+                transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
                 transforms.Normalize(mean=self.norm_mean, std=self.norm_std),
             ]))
         log('Train data loaded!')
