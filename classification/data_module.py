@@ -57,10 +57,11 @@ class ImageClassificationDataModule(LightningDataModule):
         train_split = ImageFolder(
             os.path.join(data_path, 'train'),
             transforms.Compose([
-                # TODO: add augmentations here
                 transforms.Resize(size=(self.model_image_size, self.model_image_size)),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=self.norm_mean, std=self.norm_std)
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomAffine(degrees=45, shear=10),
+                transforms.Normalize(mean=self.norm_mean, std=self.norm_std),
             ]))
         return self.get_data_loader(train_split, shuffle=True, batch_size=self.train_batch_size, **kwargs)
 

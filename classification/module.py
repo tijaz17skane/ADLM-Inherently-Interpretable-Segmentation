@@ -41,6 +41,7 @@ class ImageClassificationModule(LightningModule):
             model_image_size: int,
             ppnet: PPNet,
             last_layer_only: bool,
+            num_warm_epochs: int = gin.REQUIRED,
             loss_weight_crs_ent: float = gin.REQUIRED,
             loss_weight_clst: float = gin.REQUIRED,
             loss_weight_sep: float = gin.REQUIRED,
@@ -62,6 +63,7 @@ class ImageClassificationModule(LightningModule):
         self.checkpoints_dir = os.path.join(model_dir, 'checkpoints')
         self.model_image_size = model_image_size
         self.ppnet = ppnet
+        self.num_warm_epochs = num_warm_epochs
         self.last_layer_only = last_layer_only
         self.loss_weight_crs_ent = loss_weight_crs_ent
         self.loss_weight_clst = loss_weight_clst
@@ -108,11 +110,11 @@ class ImageClassificationModule(LightningModule):
         output, min_distances = self.ppnet.forward(image)
 
         # compute loss
-        cross_entropy = torch.nn.functional.cross_entropy(output, target)
+        cross_entropy = torch.nn.functional.cross_entropy(output, target.long())
 
-        max_dist = (self.ppnet.module.prototype_shape[1]
-                    * self.ppnet.module.prototype_shape[2]
-                    * self.ppnet.module.prototype_shape[3])
+        max_dist = (self.ppnet.prototype_shape[1]
+                    * self.ppnet.prototype_shape[2]
+                    * self.ppnet.prototype_shape[3])
 
         # prototypes_of_correct_class is a tensor of shape batch_size * num_prototypes
         # calculate cluster cost
@@ -147,6 +149,7 @@ class ImageClassificationModule(LightningModule):
         metrics['n_examples'] += target.shape[0]
         _, predicted = torch.max(output.data, 1)
         metrics['n_correct'] += (predicted == target).sum().item()
+        metrics['n_batches'] += 1
 
         if split_key == 'train':
             warm_optim, main_optim = self.optimizers()

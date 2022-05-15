@@ -42,9 +42,9 @@ class PPNet(nn.Module):
                  proto_layer_rf_info, num_classes, init_weights=True,
                  prototype_activation_function='log',
                  add_on_layers_type='bottleneck',
-                 void_negative_weight: Optional[float] = gin.REQUIRED,
+                 void_negative_weight: Optional[float] = None,
                  bottleneck_stride: Optional[int] = None,
-                 void_class: bool = True,
+                 void_class: bool = False,
                  argmax_only: bool = False,
                  patch_classification: bool = False):
 
