@@ -120,6 +120,9 @@ def train(
             trainer.fit_loop.current_epoch = start_epoch
 
         trainer.fit(model=module, datamodule=data_module)
+        
+        # TODO temporary
+        exit(0)
 
         best_checkpoint = os.path.join(results_dir, 'checkpoints', 'nopush_best.pth')
         log(f'Loading best model from {best_checkpoint}')

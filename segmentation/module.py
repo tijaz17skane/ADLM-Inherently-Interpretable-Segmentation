@@ -39,9 +39,9 @@ def reset_metrics() -> Dict:
         'n_batches': 0,
         'n_patches': 0,
         'cross_entropy': 0,
-        'cluster_cost': 0,
-        'separation': 0,
-        'separation_higher': 0,
+        # 'cluster_cost': 0,
+        # 'separation': 0,
+        # 'separation_higher': 0,
         # 'contrastive_loss': 0,
         # 'orthogonal_loss': 0,
         # 'object_dist_loss': 0,
@@ -168,6 +168,7 @@ class PatchClassificationModule(LightningModule):
             # object_mask = object_mask.to(self.device).to(torch.float32)
 
         output, patch_distances, patch_features = self.ppnet.forward_with_features(image)
+        del patch_features
 
         # treat each patch as a separate sample in calculating loss
         # log_output_flat = torch.nn.functional.log_softmax(output.reshape(-1, output.shape[-1]), dim=-1)
@@ -223,7 +224,7 @@ class PatchClassificationModule(LightningModule):
                 target_flat = target_flat[target_not_void] - 1
                 output_flat = output_flat[target_not_void]
                 # features_flat = features_flat[target_not_void]
-                dist_flat = dist_flat[target_not_void]
+                # dist_flat = dist_flat[target_not_void]
                 # if object_mask is not None:
                     # object_mask_flat = object_mask_flat[target_not_void]
 
@@ -250,31 +251,35 @@ class PatchClassificationModule(LightningModule):
         # else:
             # n_p_per_class = self.ppnet.num_prototypes // (self.ppnet.num_classes - 1)
 
-        max_dist = (self.ppnet.prototype_shape[1]
-                    * self.ppnet.prototype_shape[2]
-                    * self.ppnet.prototype_shape[3])
+
+
+        # max_dist = (self.ppnet.prototype_shape[1]
+                    # * self.ppnet.prototype_shape[2]
+                    # * self.ppnet.prototype_shape[3])
 
         # prototypes_of_correct_class is a tensor of shape batch_size * num_prototypes
         # calculate cluster cost
-        prototypes_of_correct_class = torch.t(torch.index_select(
-            self.ppnet.prototype_class_identity.to(self.device),
-            dim=-1,
-            index=target_flat.long()
-        )).to(self.device)
+        # prototypes_of_correct_class = torch.t(torch.index_select(
+            # self.ppnet.prototype_class_identity.to(self.device),
+            # dim=-1,
+            # index=target_flat.long()
+        # )).to(self.device)
 
-        inverted_distances, _ = torch.max((max_dist - dist_flat) * prototypes_of_correct_class, dim=1)
-        cluster_cost = max_dist - inverted_distances
+        # inverted_distances, _ = torch.max((max_dist - dist_flat) * prototypes_of_correct_class, dim=1)
+        # cluster_cost = max_dist - inverted_distances
 
         # calculate separation cost
-        prototypes_of_wrong_class = 1 - prototypes_of_correct_class
-        inverted_distances_to_nontarget_prototypes, _ = \
-            torch.max((max_dist - dist_flat) * prototypes_of_wrong_class, dim=1)
+        # prototypes_of_wrong_class = 1 - prototypes_of_correct_class
+        # inverted_distances_to_nontarget_prototypes, _ = \
+            # torch.max((max_dist - dist_flat) * prototypes_of_wrong_class, dim=1)
 
-        separation = max_dist - inverted_distances_to_nontarget_prototypes
+        # separation = max_dist - inverted_distances_to_nontarget_prototypes
 
-        separation_higher = torch.sum(separation > cluster_cost).item()
-        cluster_cost = torch.mean(cluster_cost)
-        separation = torch.mean(separation)
+        # separation_higher = torch.sum(separation > cluster_cost).item()
+        # cluster_cost = torch.mean(cluster_cost)
+        # separation = torch.mean(separation)
+
+
 
         # flat_proto_vectors = self.ppnet.prototype_vectors.view(self.ppnet.num_prototypes, -1)
 
@@ -360,27 +365,31 @@ class PatchClassificationModule(LightningModule):
             # else:
                 # object_dist_loss = 0.0
 
-        loss = (self.loss_weight_crs_ent * cross_entropy +
+        # loss = (self.loss_weight_crs_ent * cross_entropy +
                 # self.loss_weight_contrastive * contrastive_loss +
-                self.loss_weight_clst * cluster_cost +
-                self.loss_weight_sep * separation +
+                # self.loss_weight_clst * cluster_cost +
+                # self.loss_weight_sep * separation +
                 # self.loss_weight_object * object_dist_loss +
                 # self.loss_weight_orthogonal * orthogonal_loss +
                 # self.loss_weight_proto_rel * proto_rel_loss +
-                self.loss_weight_l1 * l1)
+                # self.loss_weight_l1 * l1)
+
+        loss = cross_entropy
 
         loss_value = loss.item()
+        # print(loss_value, cluster_cost.item(), separation.item())
+        # print(loss_value)
 
         if not np.isnan(loss_value):
             metrics['loss'] += loss_value
             metrics['cross_entropy'] += cross_entropy.item()
             # metrics['contrastive_loss'] += contrastive_loss.item()
-            metrics['cluster_cost'] += cluster_cost.item()
+            # metrics['cluster_cost'] += cluster_cost.item()
             # if object_mask is not None:
                 # metrics['object_dist_loss'] += object_dist_loss if isinstance(object_dist_loss, float) \
                     # else object_dist_loss.item()
-            metrics['separation'] += separation.item()
-            metrics['separation_higher'] += separation_higher
+            # metrics['separation'] += separation.item()
+            # metrics['separation_higher'] += separation_higher
             # metrics['orthogonal_loss'] += orthogonal_loss.item()
             # metrics['prototype_relevance_loss'] += proto_rel_loss.item()
             metrics['n_examples'] += target_flat.size(0)
@@ -408,8 +417,8 @@ class PatchClassificationModule(LightningModule):
 
             # "poly" learning rate from deeplabv3 paper
             power = 0.9
-            max_step = 400 * 186
-            optimizer.defaults['lr'] = 0.007
+            max_step = 400 * 750
+            optimizer.defaults['lr'] = 0.001
 
             for pg in optimizer.param_groups:
                 pg['lr'] = max(optimizer.defaults['lr'] * ((1 - self.trainer.global_step/max_step) ** power), 0.000001)
@@ -503,7 +512,7 @@ class PatchClassificationModule(LightningModule):
         metrics = self.metrics[split_key]
         n_batches = metrics['n_batches']
 
-        for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation']:
+        for key in ['loss', 'cross_entropy']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         if len(metrics['pos_scores']) > 0 or len(metrics['neg_scores']) > 0:
@@ -529,7 +538,7 @@ class PatchClassificationModule(LightningModule):
         else:
             self.log(f'{split_key}/accuracy', metrics['n_correct'] / metrics['n_patches'])
 
-        self.log(f'{split_key}/separation_higher', metrics['separation_higher'] / metrics['n_patches'])
+        # self.log(f'{split_key}/separation_higher', metrics['separation_higher'] / metrics['n_patches'])
         self.log('l1', self.ppnet.last_layer.weight.norm(p=1).item())
 
     def training_epoch_end(self, step_outputs):

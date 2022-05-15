@@ -23,7 +23,7 @@ PatchClassificationDataset.transpose_ann = False
 PatchClassificationDataset.image_margin_size = 512
 PatchClassificationDataset.patch_size = 1
 PatchClassificationDataset.num_classes = 20
-PatchClassificationDataset.window_size = (513, 513)
+PatchClassificationDataset.window_size = (257, 257)
 PatchClassificationDataset.object_masks = True
 PatchClassificationDataset.only_19_from_cityscapes = True
 

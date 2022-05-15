@@ -51,7 +51,7 @@ class PatchClassificationDataset(VisionDataset):
         self.patch_size = patch_size
         self.num_classes = num_classes
         self.window_size = window_size
-        self.object_masks = object_masks
+        self.object_masks = False # TODO object_masks
         self.only_19_from_cityscapes = only_19_from_cityscapes
 
         if self.only_19_from_cityscapes:
@@ -258,10 +258,16 @@ class PatchClassificationDataset(VisionDataset):
             img = torch.tensor(img).permute(2, 0, 1) / 256
 
             if self.window_size is not None:
-                window_left = np.random.randint(0, target.shape[0] - self.window_size[0])
-                window_top = np.random.randint(0, target.shape[1] - self.window_size[1])
-                window_right = window_left + self.window_size[0]
-                window_bottom = window_top + self.window_size[1]
+                if not self.is_eval:
+                    scale = np.random.uniform(0.5, 2.0)
+                    window_size = int(np.round(scale * self.window_size[0])), int(np.round(scale * self.window_size[1]))
+                else:
+                    window_size = self.window_size
+
+                window_left = np.random.randint(0, target.shape[0] - window_size[0])
+                window_top = np.random.randint(0, target.shape[1] - window_size[1])
+                window_right = window_left + window_size[0]
+                window_bottom = window_top + window_size[1]
 
                 img = img[:, window_left:window_right, window_top:window_bottom]
                 target = target[window_left:window_right, window_top:window_bottom]
@@ -302,10 +308,25 @@ class PatchClassificationDataset(VisionDataset):
                 img = self.transform(img)
             if self.target_transform is not None:
                 target = self.target_transform(target)
+                
+            target = torch.tensor(target.copy())
+            
+            
+            if not self.is_eval:
+                img = torch.nn.functional.interpolate(img.unsqueeze(0), size=(self.window_size[0], self.window_size[1]), mode='bilinear', align_corners=False)[0]
 
-            return img, target.copy(), obj_mask.copy() if obj_mask is not None else np.zeros_like(target)
+                # interpolate targets (integer)
+                iw = torch.linspace(0, target.shape[0]-1, self.window_size[0]).long()
+                ih = torch.linspace(0, target.shape[1]-1, self.window_size[1]).long()
+                target = target[ih[:, None], iw]
+
+            # TODO
+            obj_mask = None
+
+            return img, target, obj_mask.copy() if obj_mask is not None else np.zeros_like(target)
         except Exception as e:
-            # log(f'EXCEPTION: {str(e)}') # TODO log
+            log(f'EXCEPTION: {str(e)}') # TODO log
+            raise e
             return np.zeros((3, self.window_size[0], self.window_size[1]), dtype=np.float32), \
                    np.zeros((self.window_size[0], self.window_size[1])), \
                    np.zeros((self.window_size[0], self.window_size[1]))
