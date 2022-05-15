@@ -73,7 +73,7 @@ class ImageClassificationDataModule(LightningDataModule):
                 transforms.ToTensor(),
                 transforms.Normalize(mean=self.norm_mean, std=self.norm_std)
             ]))
-        return self.get_data_loader(val_split, shuffle=True, batch_size=self.test_batch_size, **kwargs)
+        return self.get_data_loader(val_split, shuffle=False, batch_size=self.test_batch_size, **kwargs)
 
     def test_dataloader(self, **kwargs):
         return self.val_dataloader(**kwargs)
@@ -85,4 +85,4 @@ class ImageClassificationDataModule(LightningDataModule):
                 transforms.Resize(size=(self.model_image_size, self.model_image_size)),
                 transforms.ToTensor(),
             ]))
-        return self.get_data_loader(train_push_split, batch_size=self.train_push_batch_size, shuffle=False, **kwargs)
+        return self.get_data_loader(train_push_split, shuffle=False, batch_size=self.train_push_batch_size, **kwargs)
