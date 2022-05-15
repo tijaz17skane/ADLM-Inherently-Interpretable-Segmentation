@@ -2,7 +2,7 @@
 
 Trainer.gpus = 1
 
-construct_PPNet.base_architecture = 'resnet101'
+construct_PPNet.base_architecture = 'resnet34'
 construct_PPNet.pretrained = True
 
 construct_PPNet.prototype_shape = (800, 512, 1, 1)
@@ -10,7 +10,7 @@ construct_PPNet.num_classes = 80
 construct_PPNet.prototype_activation_function = 'log'
 construct_PPNet.add_on_layers_type = 'regular'
 
-train_cls.model_image_size = 112
+train_cls.model_image_size = 224
 train_cls.random_seed = 20220227
 train_cls.early_stopping_patience_main = 32
 train_cls.early_stopping_patience_last_layer = 32
@@ -30,8 +30,8 @@ Trainer.min_epochs = 100
 ImageClassificationModule.num_warm_epochs = 5
 
 ImageClassificationModule.loss_weight_crs_ent = 1.0
-ImageClassificationModule.loss_weight_clst = 0.0
-ImageClassificationModule.loss_weight_border = 0.8
+ImageClassificationModule.loss_weight_clst = 0.8
+ImageClassificationModule.loss_weight_border = 0.0
 ImageClassificationModule.loss_weight_sep = -0.08
 ImageClassificationModule.loss_weight_l1 = 1e-4
 
