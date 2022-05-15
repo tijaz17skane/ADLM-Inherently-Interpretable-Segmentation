@@ -30,7 +30,8 @@ Trainer.min_epochs = 100
 ImageClassificationModule.num_warm_epochs = 5
 
 ImageClassificationModule.loss_weight_crs_ent = 1.0
-ImageClassificationModule.loss_weight_clst = 0.8
+ImageClassificationModule.loss_weight_clst = 0.0
+ImageClassificationModule.loss_weight_border = 0.8
 ImageClassificationModule.loss_weight_sep = -0.08
 ImageClassificationModule.loss_weight_l1 = 1e-4
 
@@ -45,7 +46,7 @@ ImageClassificationModule.warm_optimizer_weight_decay = 1e-3
 
 ImageClassificationModule.last_layer_optimizer_lr = 1e-4
 
-ImageClassificationModule.gradient_clipping = 100
+ImageClassificationModule.gradient_clipping = 10
 
 # TODO verify (this seems small)
 ImageClassificationModule.lr_step_size = 5

@@ -28,7 +28,8 @@ def reset_metrics() -> Dict:
         'cross_entropy': 0,
         'cluster_cost': 0,
         'separation': 0,
-        'loss': 0
+        'loss': 0,
+        'border_cluster_cost': 0
     }
 
 
@@ -46,6 +47,7 @@ class ImageClassificationModule(LightningModule):
             loss_weight_clst: float = gin.REQUIRED,
             loss_weight_sep: float = gin.REQUIRED,
             loss_weight_l1: float = gin.REQUIRED,
+            loss_weight_border: float = gin.REQUIRED,
             joint_optimizer_lr_features: float = gin.REQUIRED,
             joint_optimizer_lr_add_on_layers: float = gin.REQUIRED,
             joint_optimizer_lr_prototype_vectors: float = gin.REQUIRED,
@@ -70,6 +72,7 @@ class ImageClassificationModule(LightningModule):
         self.loss_weight_clst = loss_weight_clst
         self.loss_weight_sep = loss_weight_sep
         self.loss_weight_l1 = loss_weight_l1
+        self.loss_weight_border = loss_weight_border
         self.joint_optimizer_lr_features = joint_optimizer_lr_features
         self.joint_optimizer_lr_add_on_layers = joint_optimizer_lr_add_on_layers
         self.joint_optimizer_lr_prototype_vectors = joint_optimizer_lr_prototype_vectors
@@ -109,8 +112,7 @@ class ImageClassificationModule(LightningModule):
         image = image.to(self.device)
         target = target.to(self.device).to(torch.float32)
 
-        output, min_distances = self.ppnet.forward(image)
-
+        output, min_distances, patch_distances = self.ppnet.forward(image, return_distances=True )
         # compute loss
         cross_entropy = torch.nn.functional.cross_entropy(output, target.long())
 
@@ -134,12 +136,33 @@ class ImageClassificationModule(LightningModule):
             torch.max((max_dist - min_distances) * prototypes_of_wrong_class, dim=1)
         separation = torch.mean(max_dist - inverted_distances_to_nontarget_prototypes)
 
+        # calculate 'border cluster cost'
+        # each image should have some prototype at its borders
+        # patch_distances.shape = (batch_size, num_prototypes, n_patches_cols, n_patches_rows)
+        # min_dist_border1.shape = (batch_size, num_prototypes)
+
+        min_dist_border1, _ = max_dist - torch.max((max_dist - patch_distances[:, :, 0, :])
+                                                   * prototypes_of_correct_class, dim=-1)
+        min_dist_border2, _ = max_dist - torch.max((max_dist - patch_distances[:, :, :, 0])
+                                                   * prototypes_of_correct_class, dim=-1)
+        min_dist_border3, _ = max_dist - torch.max((max_dist - patch_distances[:, :, -1, :])
+                                                   * prototypes_of_correct_class, dim=-1)
+        min_dist_border4, _ = max_dist - torch.max((max_dist - patch_distances[:, :, :, -1])
+                                                   * prototypes_of_correct_class, dim=-1)
+
+        max_border_dist = torch.maximum(min_dist_border1, min_dist_border2)
+        max_border_dist = torch.maximum(max_border_dist, min_dist_border3)
+        max_border_dist = torch.maximum(max_border_dist, min_dist_border4)
+
+        border_cluster_cost = torch.mean(max_border_dist)
+
         l1_mask = 1 - torch.t(self.ppnet.prototype_class_identity).to(self.device)
         l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
 
         loss = (self.loss_weight_crs_ent * cross_entropy +
                 self.loss_weight_clst * cluster_cost +
                 self.loss_weight_sep * separation +
+                self.loss_weight_border * border_cluster_cost +
                 self.loss_weight_l1 * l1)
 
         loss_value = loss.item()
@@ -148,6 +171,7 @@ class ImageClassificationModule(LightningModule):
         metrics['cross_entropy'] += cross_entropy.item()
         metrics['cluster_cost'] += cluster_cost.item()
         metrics['separation'] += separation.item()
+        metrics['border_cluster_cost'] += max_border_dist.item()
         metrics['n_examples'] += target.shape[0]
         _, predicted = torch.max(output.data, 1)
         n_correct = (predicted == target).sum().item()
@@ -246,7 +270,7 @@ class ImageClassificationModule(LightningModule):
         metrics = self.metrics[split_key]
         n_batches = metrics['n_batches']
 
-        for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation']:
+        for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation', 'border_cluster_cost']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         self.log(f'{split_key}/accuracy', metrics['n_correct'] / metrics['n_examples'])
