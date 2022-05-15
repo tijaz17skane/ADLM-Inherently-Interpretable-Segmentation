@@ -148,7 +148,8 @@ class ImageClassificationModule(LightningModule):
         metrics['separation'] += separation.item()
         metrics['n_examples'] += target.shape[0]
         _, predicted = torch.max(output.data, 1)
-        metrics['n_correct'] += (predicted == target).sum().item()
+        n_correct = (predicted == target).sum().item()
+        metrics['n_correct'] += n_correct
         metrics['n_batches'] += 1
 
         if split_key == 'train':
@@ -167,6 +168,7 @@ class ImageClassificationModule(LightningModule):
 
             optimizer.step()
             self.log('train_loss_step', loss_value, on_step=True, prog_bar=True)
+            self.log('train_accuracy_step', n_correct / target.shape[0], on_step=True, prog_bar=True)
 
             lr = get_lr(optimizer)
             self.log('lr', lr, on_step=True)

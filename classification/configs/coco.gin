@@ -10,7 +10,7 @@ construct_PPNet.num_classes = 80
 construct_PPNet.prototype_activation_function = 'log'
 construct_PPNet.add_on_layers_type = 'regular'
 
-train_cls.model_image_size = 64  # TODO: Try other size
+train_cls.model_image_size = 112
 train_cls.random_seed = 20220227
 train_cls.early_stopping_patience_main = 32
 train_cls.early_stopping_patience_last_layer = 32
@@ -48,12 +48,3 @@ ImageClassificationModule.last_layer_optimizer_lr = 1e-4
 # TODO verify (this seems small)
 ImageClassificationModule.lr_step_size = 5
 ImageClassificationModule.lr_gamma = 0.1
-
-# CUB-200-2011 has 5,994 images
-# our train set has 860001
-# we limit number of training batches so that one epoch has about 5994 images
-Trainer.limit_train_batches = 75 # 75 * 80 = 6000
-
-# our valid set has 36781 images
-# we limit number of validation batches so that one epoch also has about 5994 images
-Trainer.limit_val_batches = 75 # 75 * 80 = 6000
