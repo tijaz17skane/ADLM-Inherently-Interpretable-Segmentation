@@ -5,6 +5,7 @@ import cv2
 import os
 import time
 
+from tqdm import tqdm
 
 from receptive_field import compute_rf_prototype
 from helpers import makedir, find_high_activation_crop
@@ -77,7 +78,8 @@ def push_prototypes(dataloader, # pytorch dataloader (must be unnormalized in [0
     num_classes = prototype_network_parallel.num_classes
 
     log(f'Updating prototypes...')
-    for push_iter, (search_batch_input, search_y) in enumerate(dataloader):
+    for push_iter, (search_batch_input, search_y) in tqdm(enumerate(dataloader), total=len(dataloader),
+                                                          desc='updating prototypes'):
         '''
         start_index_of_search keeps track of the index of the image
         assigned to serve as prototype
