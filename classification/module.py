@@ -147,10 +147,14 @@ class ImageClassificationModule(LightningModule):
         # calculate 'border cluster cost'
         # each image should have some prototype at its borders
         prototype_of_patch_class = prototypes_of_correct_class.unsqueeze(-1)
-        min_dist_border1, _ = torch.max((max_dist - patch_distances[:, :, 0, :]) * prototype_of_patch_class, dim=-1)
-        min_dist_border2, _ = torch.max((max_dist - patch_distances[:, :, :, 0]) * prototype_of_patch_class, dim=-1)
-        min_dist_border3, _ = torch.max((max_dist - patch_distances[:, :, -1, :]) * prototype_of_patch_class, dim=-1)
-        min_dist_border4, _ = torch.max((max_dist - patch_distances[:, :, :, -1]) * prototype_of_patch_class, dim=-1)
+        min_dist_border1 = torch.amax((max_dist - patch_distances[:, :, 0, :]) *
+                                      prototype_of_patch_class, dim=(-1, -2))
+        min_dist_border2 = torch.amax((max_dist - patch_distances[:, :, :, 0]) *
+                                      prototype_of_patch_class, dim=(-1, -2))
+        min_dist_border3 = torch.amax((max_dist - patch_distances[:, :, -1, :]) *
+                                      prototype_of_patch_class, dim=(-1, -2))
+        min_dist_border4 = torch.amax((max_dist - patch_distances[:, :, :, -1]) *
+                                      prototype_of_patch_class, dim=(-1, -2))
 
         max_border_dist = torch.maximum(max_dist - min_dist_border1, max_dist - min_dist_border2)
         max_border_dist = torch.maximum(max_border_dist, max_dist - min_dist_border3)
