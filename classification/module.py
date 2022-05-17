@@ -7,6 +7,7 @@ from typing import Dict
 import gin
 import torch
 from pytorch_lightning import LightningModule
+import numpy as np
 
 from helpers import list_of_distances
 from model import PPNet
@@ -101,6 +102,13 @@ class ImageClassificationModule(LightningModule):
 
         self.best_acc = 0.0
 
+    def save_batch_info(self, image, target, batch_key):
+        image = image.cpu().detach().numpy()
+        target = target.cpu().detach().numpy()
+        debug_dir = os.path.join(self.model_dir, 'debug_batches')
+        os.makedirs(debug_dir, exist_ok=True)
+        np.savez(os.path.join(debug_dir, batch_key), image=image, target=target)
+
     def forward(self, x):
         return self.ppnet(x)
 
@@ -153,19 +161,28 @@ class ImageClassificationModule(LightningModule):
         l1_mask = 1 - torch.t(self.ppnet.prototype_class_identity).to(self.device)
         l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
 
-        loss = (self.loss_weight_crs_ent * cross_entropy +
-                self.loss_weight_clst * cluster_cost +
-                self.loss_weight_sep * separation +
-                self.loss_weight_border * border_cluster_cost +
-                self.loss_weight_l1 * l1)
+        # loss is sometimes Nan or Inf, we need to debug this
+        loss = 0
+        for key, weight, val in [('cross_entropy', self.loss_weight_crs_ent, cross_entropy),
+                                 ('cluster_cost', self.loss_weight_clst, cluster_cost),
+                                 ('separation', self.loss_weight_sep, separation),
+                                 ('border_cluster_cost', self.loss_weight_border, border_cluster_cost)]:
+            if torch.isnan(val):
+                log(f'{key} - NaN val')
+                self.save_batch_info(image, target, f'nan_{key}_{self.trainer.global_step}')
+            elif torch.isinf(val):
+                log(f'{key} - inf val')
+                self.save_batch_info(image, target, f'inf_{key}_{self.trainer.global_step}')
+            else:
+                loss += weight * val
+                metrics[key] += val.item()
 
-        loss_value = loss.item()
+        if self.last_layer_only:
+            loss += self.loss_weight_l1 * l1
+
+        loss_value = loss.item() if torch.is_tensor(loss) else 0.0
 
         metrics['loss'] += loss_value
-        metrics['cross_entropy'] += cross_entropy.item()
-        metrics['cluster_cost'] += cluster_cost.item()
-        metrics['separation'] += separation.item()
-        metrics['border_cluster_cost'] += border_cluster_cost.item()
         metrics['n_examples'] += target.shape[0]
         _, predicted = torch.max(output.data, 1)
         n_correct = (predicted == target).sum().item()
@@ -183,13 +200,15 @@ class ImageClassificationModule(LightningModule):
                 else:
                     optimizer = main_optim
 
-            optimizer.zero_grad()
-            self.manual_backward(loss)
+            if torch.is_tensor(loss):
+                optimizer.zero_grad()
+                self.manual_backward(loss)
 
-            if self.gradient_clipping is not None:
-                torch.nn.utils.clip_grad_norm_(self.ppnet.parameters(), self.gradient_clipping)
+                if self.gradient_clipping is not None:
+                    torch.nn.utils.clip_grad_norm_(self.ppnet.parameters(), self.gradient_clipping)
 
-            optimizer.step()
+                optimizer.step()
+
             self.log('train_loss_step', loss_value, on_step=True, prog_bar=True)
             self.log('train_accuracy_step', n_correct / target.shape[0], on_step=True, prog_bar=True)
 
