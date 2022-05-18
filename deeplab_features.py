@@ -61,6 +61,4 @@ def deeplabv2_resnet101_features(pretrained=False, **kwargs):
         n_classes=64, n_blocks=[3, 4, 23, 3], atrous_rates=[6, 12, 18, 24]
     )
 
-    model.conv_info = lambda: ([], [], [])
-
     return model

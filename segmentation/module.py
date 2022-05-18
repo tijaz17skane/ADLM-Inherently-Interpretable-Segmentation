@@ -174,6 +174,11 @@ class PatchClassificationModule(LightningModule):
         output, patch_distances, patch_features = self.ppnet.forward_with_features(image)
         del patch_features
 
+        # interpolate targets (integer)
+        iw = torch.linspace(0, target.shape[1] - 1, output.shape[1]).long()
+        ih = torch.linspace(0, target.shape[2] - 1, output.shape[2]).long()
+        target = target[:, ih[:, None], iw]
+
         # treat each patch as a separate sample in calculating loss
         # log_output_flat = torch.nn.functional.log_softmax(output.reshape(-1, output.shape[-1]), dim=-1)
         # target_flat = target.reshape(-1, target.shape[-1])
@@ -449,7 +454,7 @@ class PatchClassificationModule(LightningModule):
 
             optimizer.step()
 
-            #nomalize basis vectors
+            # normalize basis vectors
             self.ppnet.prototype_vectors.data = F.normalize(self.ppnet.prototype_vectors, p=2, dim=1).data
 
             self.log('train_loss_step', loss_value, on_step=True, prog_bar=True)

@@ -261,11 +261,12 @@ class PatchClassificationDataset(VisionDataset):
                 if not self.is_eval:
                     scale = np.random.uniform(0.5, 2.0)
                     window_size = int(np.round(scale * self.window_size[0])), int(np.round(scale * self.window_size[1]))
+                    window_size = min(window_size[0], target.shape[0]), min(window_size[1], target.shape[1])
                 else:
                     window_size = self.window_size
 
-                window_left = np.random.randint(0, target.shape[0] - window_size[0])
-                window_top = np.random.randint(0, target.shape[1] - window_size[1])
+                window_left = np.random.randint(0, target.shape[0] - window_size[0]+1)
+                window_top = np.random.randint(0, target.shape[1] - window_size[1]+1)
                 window_right = window_left + window_size[0]
                 window_bottom = window_top + window_size[1]
 

@@ -456,7 +456,11 @@ def construct_PPNet(
         add_on_layers_type='bottleneck'
 ):
     features = base_architecture_to_features[base_architecture](pretrained=pretrained)
-    layer_filter_sizes, layer_strides, layer_paddings = features.conv_info()
+    if hasattr(features, 'conv_info'):
+        layer_filter_sizes, layer_strides, layer_paddings = features.conv_info()
+    else:
+        layer_filter_sizes, layer_strides, layer_paddings = [], [], []
+
     proto_layer_rf_info = compute_proto_layer_rf_info_v2(img_size=img_size,
                                                          layer_filter_sizes=layer_filter_sizes,
                                                          layer_strides=layer_strides,
