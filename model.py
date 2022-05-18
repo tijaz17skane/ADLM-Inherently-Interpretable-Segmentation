@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from deeplab_features import deeplabv3_resnet50_features
+from deeplab_features import deeplabv3_resnet50_features, deeplabv2_resnet101_features
 from resnet_features import resnet18_features, resnet34_features, resnet50_features, resnet101_features, \
     resnet152_features
 from densenet_features import densenet121_features, densenet161_features, densenet169_features, densenet201_features
@@ -24,6 +24,7 @@ base_architecture_to_features = {'resnet18': resnet18_features,
                                  'densenet161': densenet161_features,
                                  'densenet169': densenet169_features,
                                  'densenet201': densenet201_features,
+                                 'deeplabv2_resnet101': deeplabv2_resnet101_features,
                                  'deeplabv3_resnet50': deeplabv3_resnet50_features,
                                  'vgg11': vgg11_features,
                                  'vgg11_bn': vgg11_bn_features,
@@ -36,7 +37,7 @@ base_architecture_to_features = {'resnet18': resnet18_features,
 
 
 @gin.configurable(allowlist=['void_negative_weight', 'bottleneck_stride', 'patch_classification',
-                             'void_class', 'argmax_only'])
+                             'void_class', 'argmax_only', 'tesnet'])
 class PPNet(nn.Module):
     def __init__(self, features, img_size, prototype_shape,
                  proto_layer_rf_info, num_classes, init_weights=True,
@@ -46,6 +47,7 @@ class PPNet(nn.Module):
                  bottleneck_stride: Optional[int] = None,
                  void_class: bool = False,
                  argmax_only: bool = False,
+                 tesnet: bool = False,
                  patch_classification: bool = False):
 
         super(PPNet, self).__init__()
@@ -59,6 +61,7 @@ class PPNet(nn.Module):
         self.patch_classification = patch_classification
         self.void_class = void_class
         self.argmax_only = argmax_only
+        self.tesnet = tesnet
 
         if self.argmax_only:
             self.gumbel_softmax_tau = nn.Parameter(torch.tensor(1.0), requires_grad=False)
@@ -93,6 +96,7 @@ class PPNet(nn.Module):
             for i in range(self.num_classes):
                 self.prototype_class_identity[i * num_prototypes_per_class:(i+1) * num_prototypes_per_class, i] = 1
 
+        self.num_prototypes_per_class = num_prototypes_per_class
         self.proto_layer_rf_info = proto_layer_rf_info
 
         # this has to be named features to allow the precise loading
@@ -276,22 +280,62 @@ class PPNet(nn.Module):
         else:
             return self.last_layer(prototype_activations)
 
+    def _cosine_convolution(self, x):
+        x = F.normalize(x, p=2, dim=1)
+        now_prototype_vectors = F.normalize(self.prototype_vectors, p=2, dim=1)
+        distances = F.conv2d(input=x, weight=now_prototype_vectors)
+        distances = -distances
+        return distances
+
+    def _project2basis(self, x):
+        now_prototype_vectors = F.normalize(self.prototype_vectors, p=2, dim=1)
+        distances = F.conv2d(input=x, weight=now_prototype_vectors)
+        return distances
+
+    def tesnet_prototype_distances(self, conv_features):
+        cosine_distances = self._cosine_convolution(conv_features)
+        project_distances = self._project2basis(conv_features)
+
+        return project_distances, cosine_distances
+    
+    def global_min_pooling(self,distances):
+        min_distances = -F.max_pool2d(-distances,
+                                      kernel_size=(distances.size()[2],
+                                                   distances.size()[3]))
+        min_distances = min_distances.view(-1, self.num_prototypes)
+
+        return min_distances
+
+    def global_max_pooling(self,distances):
+        max_distances = F.max_pool2d(distances,
+                                     kernel_size=(distances.size()[2],
+                                                  distances.size()[3]))
+        max_distances = max_distances.view(-1, self.num_prototypes)
+
+        return max_distances
+
     def forward_from_conv_features(self, conv_features, return_distances=False):
-        distances = self._l2_convolution(conv_features)
-        '''
-        we cannot refactor the lines below for similarity scores
-        because we need to return min_distances
-        '''
+        if hasattr(self, 'tesnet') and self.tesnet:
+            project_similarities, distances = self.tesnet_prototype_distances(conv_features)
+        else:
+            distances = self._l2_convolution(conv_features)
+            project_similarities = None
+
         # distances.shape = (batch_size, num_prototypes, n_patches_cols, n_patches_rows)
 
         if hasattr(self, 'patch_classification') and self.patch_classification:
             # flatten to get predictions per patch
             batch_size, num_prototypes, n_patches_cols, n_patches_rows = distances.shape
 
-            # shape: (batch_size, n_patches_cols, n_patches_rows, num_prototypes)
-            dist_view = distances.permute(0, 2, 3, 1).contiguous()
-            dist_view = dist_view.view(-1, num_prototypes)
-            prototype_activations = self.distance_2_similarity(dist_view)
+            if project_similarities is not None:
+                # shape: (batch_size, n_patches_cols, n_patches_rows, num_prototypes)
+                dist_view = project_similarities.permute(0, 2, 3, 1).contiguous()
+                prototype_activations = dist_view.view(-1, num_prototypes)
+            else:
+                # shape: (batch_size, n_patches_cols, n_patches_rows, num_prototypes)
+                dist_view = distances.permute(0, 2, 3, 1).contiguous()
+                dist_view = dist_view.view(-1, num_prototypes)
+                prototype_activations = self.distance_2_similarity(dist_view)
 
             logits = self.run_last_layer(prototype_activations)
 

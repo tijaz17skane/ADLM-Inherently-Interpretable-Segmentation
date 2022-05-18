@@ -311,7 +311,6 @@ class PatchClassificationDataset(VisionDataset):
                 
             target = torch.tensor(target.copy())
             
-            
             if not self.is_eval:
                 img = torch.nn.functional.interpolate(img.unsqueeze(0), size=(self.window_size[0], self.window_size[1]), mode='bilinear', align_corners=False)[0]
 
@@ -325,8 +324,7 @@ class PatchClassificationDataset(VisionDataset):
 
             return img, target, obj_mask.copy() if obj_mask is not None else np.zeros_like(target)
         except Exception as e:
-            log(f'EXCEPTION: {str(e)}') # TODO log
-            raise e
+            log(f'EXCEPTION: {str(e)}')
             return np.zeros((3, self.window_size[0], self.window_size[1]), dtype=np.float32), \
                    np.zeros((self.window_size[0], self.window_size[1])), \
                    np.zeros((self.window_size[0], self.window_size[1]))
