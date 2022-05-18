@@ -104,7 +104,7 @@ def train_cls(
 
         log('MAIN TRAINING')
         callbacks = [
-            EarlyStopping(monitor='val/loss', patience=early_stopping_patience_main, mode='min')
+            EarlyStopping(monitor='val/accuracy', patience=early_stopping_patience_main, mode='max')
         ]
 
         module = ImageClassificationModule(
@@ -170,7 +170,7 @@ def train_cls(
 
     log('LAST LAYER FINE-TUNING')
     callbacks = [
-        EarlyStopping(monitor='val/loss', patience=early_stopping_patience_last_layer, mode='min')
+        EarlyStopping(monitor='val/accuracy', patience=early_stopping_patience_last_layer, mode='max')
     ]
 
     module = ImageClassificationModule(

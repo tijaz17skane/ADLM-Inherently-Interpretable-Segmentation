@@ -57,7 +57,6 @@ class ImageClassificationModule(LightningModule):
             warm_optimizer_lr_prototype_vectors: float = gin.REQUIRED,
             warm_optimizer_weight_decay: float = gin.REQUIRED,
             last_layer_optimizer_lr: float = gin.REQUIRED,
-            lr_step_size: int = gin.REQUIRED,
             lr_gamma: float = gin.REQUIRED,
             gradient_clipping: float = gin.REQUIRED
     ):
@@ -82,7 +81,6 @@ class ImageClassificationModule(LightningModule):
         self.warm_optimizer_lr_prototype_vectors = warm_optimizer_lr_prototype_vectors
         self.warm_optimizer_weight_decay = warm_optimizer_weight_decay
         self.last_layer_optimizer_lr = last_layer_optimizer_lr
-        self.lr_step_size = lr_step_size
         self.lr_gamma = lr_gamma
         self.gradient_clipping = gradient_clipping
 
@@ -349,7 +347,7 @@ class ImageClassificationModule(LightningModule):
                     }
                 ]
         main_optimizer = torch.optim.Adam(main_optimizer_specs)
-        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(main_optimizer,
-                                                            step_size=self.lr_step_size, gamma=self.lr_gamma)
+        self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(main_optimizer,
+                                                                 milestones=[15, 45], gamma=self.lr_gamma)
 
         return warm_optimizer, main_optimizer
