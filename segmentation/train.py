@@ -12,6 +12,7 @@ from typing import Optional
 import argh
 import torch
 import neptune.new as neptune
+import torchvision
 from pytorch_lightning import Trainer, seed_everything
 import gin
 from pytorch_lightning.callbacks import EarlyStopping
@@ -24,6 +25,8 @@ from segmentation.config import get_operative_config_json
 from model import construct_PPNet
 from segmentation.push import push_prototypes
 from settings import log
+from deeplab_features import torchvision_resnet_weight_key_to_deeplab2
+
 
 Trainer = gin.external_configurable(Trainer)
 
@@ -59,6 +62,25 @@ def train(
         ppnet = torch.load(last_checkpoint)
     else:
         ppnet = construct_PPNet(img_size=model_image_size)
+
+    # uncomment to load model pre-trained on COCO
+    # state_dict = torch.load('/home/sacha/proto-segmentation/deeplab_pytorch/data/models/coco/deeplabv1_resnet101/caffemodel/deeplabv1_resnet101-coco.pth')
+
+    # load weights from Resnet pretrained on ImageNet
+    resnet_state_dict = torchvision.models.resnet101(pretrained=True)
+    new_state_dict = {}
+    for k, v in resnet_state_dict:
+        new_key = torchvision_resnet_weight_key_to_deeplab2(k)
+        if new_key is not None:
+            new_state_dict[new_key] = v
+
+    load_result = ppnet.load_state_dict(new_state_dict, strict=False)
+
+    assert len(load_result.missing_keys) == 8  # ASPP layer
+    assert len(load_result.unexpected_keys) == 0
+
+    log(f'Loaded {len(new_state_dict)} weights from pretrained ResMet101')
+    log(str(load_result))
 
     data_module = PatchClassificationDataModule(
         model_image_size=model_image_size,
@@ -104,7 +126,7 @@ def train(
 
         log('MAIN TRAINING')
         callbacks = [
-            EarlyStopping(monitor='val/loss', patience=early_stopping_patience_main, mode='min')
+            EarlyStopping(monitor='val/accuracy', patience=early_stopping_patience_main, mode='max')
         ]
 
         module = PatchClassificationModule(
@@ -176,7 +198,7 @@ def train(
 
     log('LAST LAYER FINE-TUNING')
     callbacks = [
-        EarlyStopping(monitor='val/loss', patience=early_stopping_patience_last_layer, mode='min')
+        EarlyStopping(monitor='val/accuracy', patience=early_stopping_patience_last_layer, mode='max')
     ]
 
     module = PatchClassificationModule(

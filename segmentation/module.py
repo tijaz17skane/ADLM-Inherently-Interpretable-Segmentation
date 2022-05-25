@@ -44,8 +44,8 @@ def reset_metrics() -> Dict:
         'separation': 0,
         # 'separation_higher': 0,
         # 'contrastive_loss': 0,
-        'orthogonal_loss': 0,
-        'subspace_separation': 0,
+        # 'orthogonal_loss': 0,
+        # 'subspace_separation': 0,
         # 'object_dist_loss': 0,
         # 'prototype_relevance_loss': 0,
         'loss': 0
@@ -142,7 +142,7 @@ class PatchClassificationModule(LightningModule):
         # we use optimizers manually
         self.automatic_optimization = False
 
-        self.best_loss = 10e6
+        self.best_acc = 0.0
 
         # use this for distribution prediction
         # self.loss = torch.nn.KLDivLoss(reduction='batchmean')
@@ -159,7 +159,7 @@ class PatchClassificationModule(LightningModule):
             image, target = batch
             object_mask = None
         else:
-            image, target, object_mask = batch
+            image, target = batch
 
             # make object IDs unique within batch
             # sample_idx = torch.arange(object_mask.shape[0], device=object_mask.device).unsqueeze(-1).unsqueeze(-1)
@@ -174,10 +174,12 @@ class PatchClassificationModule(LightningModule):
         output, patch_distances, patch_features = self.ppnet.forward_with_features(image)
         del patch_features
 
+        # output = F.interpolate(output, size=(target.shapep[1], target.shape[2]), mode="bilinear", align_corners=False)
+
         # interpolate targets (integer)
-        iw = torch.linspace(0, target.shape[1] - 1, output.shape[1]).long()
-        ih = torch.linspace(0, target.shape[2] - 1, output.shape[2]).long()
-        target = target[:, ih[:, None], iw]
+        # iw = torch.linspace(0, target.shape[1] - 1, output.shape[1]).long()
+        # ih = torch.linspace(0, target.shape[2] - 1, output.shape[2]).long()
+        # target = target[:, ih[:, None], iw]
 
         # treat each patch as a separate sample in calculating loss
         # log_output_flat = torch.nn.functional.log_softmax(output.reshape(-1, output.shape[-1]), dim=-1)
@@ -286,38 +288,39 @@ class PatchClassificationModule(LightningModule):
         cluster_cost = torch.mean(cluster_cost)
         separation = torch.mean(separation)
 
-        # optimize orthogonality of prototype_vector
-        cur_basis_matrix = torch.squeeze(self.ppnet.prototype_vectors)  # [2000,128]
-        subspace_basis_matrix = cur_basis_matrix.reshape(self.ppnet.num_classes,
-                                                         self.ppnet.num_prototypes_per_class,
-                                                         self.ppnet.prototype_shape[1])  # [200,10,128]
-        subspace_basis_matrix_T = torch.transpose(subspace_basis_matrix, 1, 2)  # [200,10,128]->[200,128,10]
-        orth_operator = torch.matmul(subspace_basis_matrix,
-                                     subspace_basis_matrix_T)  # [200,10,128] [200,128,10] -> [200,10,10]
-        I_operator = torch.eye(subspace_basis_matrix.size(1), subspace_basis_matrix.size(1)).cuda()  # [10,10]
-        difference_value = orth_operator - I_operator  # [200,10,10]-[10,10]->[200,10,10]
-        orth_cost = torch.sum(torch.relu(torch.norm(difference_value, p=1, dim=[1, 2]) - 0))  # [200]->[1]
+        if False:  # temporary for optimization
+            # optimize orthogonality of prototype_vector
+            cur_basis_matrix = torch.squeeze(self.ppnet.prototype_vectors)  # [2000,128]
+            subspace_basis_matrix = cur_basis_matrix.reshape(self.ppnet.num_classes,
+                                                             self.ppnet.num_prototypes_per_class,
+                                                             self.ppnet.prototype_shape[1])  # [200,10,128]
+            subspace_basis_matrix_T = torch.transpose(subspace_basis_matrix, 1, 2)  # [200,10,128]->[200,128,10]
+            orth_operator = torch.matmul(subspace_basis_matrix,
+                                         subspace_basis_matrix_T)  # [200,10,128] [200,128,10] -> [200,10,10]
+            I_operator = torch.eye(subspace_basis_matrix.size(1), subspace_basis_matrix.size(1)).cuda()  # [10,10]
+            difference_value = orth_operator - I_operator  # [200,10,10]-[10,10]->[200,10,10]
+            orth_cost = torch.sum(torch.relu(torch.norm(difference_value, p=1, dim=[1, 2]) - 0))  # [200]->[1]
 
-        del cur_basis_matrix
-        del orth_operator
-        del I_operator
-        del difference_value
+            del cur_basis_matrix
+            del orth_operator
+            del I_operator
+            del difference_value
 
-        # subspace sep
-        projection_operator = torch.matmul(subspace_basis_matrix_T,
-                                           subspace_basis_matrix)  # [200,128,10] [200,10,128] -> [200,128,128]
-        del subspace_basis_matrix
-        del subspace_basis_matrix_T
+            # subspace sep
+            projection_operator = torch.matmul(subspace_basis_matrix_T,
+                                               subspace_basis_matrix)  # [200,128,10] [200,10,128] -> [200,128,128]
+            del subspace_basis_matrix
+            del subspace_basis_matrix_T
 
-        projection_operator_1 = torch.unsqueeze(projection_operator, dim=1)  # [200,1,128,128]
-        projection_operator_2 = torch.unsqueeze(projection_operator, dim=0)  # [1,200,128,128]
-        pairwise_distance = torch.norm(projection_operator_1 - projection_operator_2 + 1e-10, p='fro',
-                                       dim=[2, 3])  # [200,200,128,128]->[200,200]
-        subspace_sep = 0.5 * torch.norm(pairwise_distance, p=1, dim=[0, 1], dtype=torch.double) / torch.sqrt(
-            torch.tensor(2, dtype=torch.double)).cuda()
-        del projection_operator_1
-        del projection_operator_2
-        del pairwise_distance
+            projection_operator_1 = torch.unsqueeze(projection_operator, dim=1)  # [200,1,128,128]
+            projection_operator_2 = torch.unsqueeze(projection_operator, dim=0)  # [1,200,128,128]
+            pairwise_distance = torch.norm(projection_operator_1 - projection_operator_2 + 1e-10, p='fro',
+                                           dim=[2, 3])  # [200,200,128,128]->[200,200]
+            subspace_sep = 0.5 * torch.norm(pairwise_distance, p=1, dim=[0, 1], dtype=torch.double) / torch.sqrt(
+                torch.tensor(2, dtype=torch.double)).cuda()
+            del projection_operator_1
+            del projection_operator_2
+            del pairwise_distance
 
         # flat_proto_vectors = self.ppnet.prototype_vectors.view(self.ppnet.num_prototypes, -1)
 
@@ -408,8 +411,8 @@ class PatchClassificationModule(LightningModule):
                 self.loss_weight_clst * cluster_cost +
                 self.loss_weight_sep * separation +
                 # self.loss_weight_object * object_dist_loss +
-                self.loss_weight_orthogonal * orth_cost +
-                self.loss_weight_sub_sep * subspace_sep +
+                # self.loss_weight_orthogonal * orth_cost +
+                # self.loss_weight_sub_sep * subspace_sep +
                 # self.loss_weight_proto_rel * proto_rel_loss +
                 self.loss_weight_l1 * l1)
 
@@ -427,8 +430,8 @@ class PatchClassificationModule(LightningModule):
                     # else object_dist_loss.item()
             metrics['separation'] += separation.item()
             # metrics['separation_higher'] += separation_higher
-            metrics['orthogonal_loss'] += orth_cost.item()
-            metrics['subspace_separation'] += subspace_sep.item()
+            # metrics['orthogonal_loss'] += orth_cost.item()
+            # metrics['subspace_separation'] += subspace_sep.item()
             # metrics['prototype_relevance_loss'] += proto_rel_loss.item()
             metrics['n_examples'] += target_flat.size(0)
             metrics['n_correct'] += torch.sum(is_correct)
@@ -497,32 +500,37 @@ class PatchClassificationModule(LightningModule):
         for split_key in self.metrics.keys():
             self.metrics[split_key] = reset_metrics()
 
+        # Freeze the batch norm pre-trained on COCO
+        # TODO uncomment after warmup
+        # self.ppnet.features.freeze_bn()
+
     def on_validation_epoch_end(self):
-        val_loss = self.metrics['val']['loss'] / self.metrics['val']['n_batches']
+        val_acc = self.metrics['val']['n_correct'] / self.metrics['val']['n_patches']
 
         if self.last_layer_only:
             self.log('training_stage', 2.0)
             stage_key = 'push'
-            self.lr_scheduler.step(val_loss)
+            self.lr_scheduler.step(val_acc)
         else:
             if self.current_epoch < self.num_warm_epochs:
                 # noinspection PyUnresolvedReferences
                 self.log('training_stage', 0.0)
                 stage_key = 'warmup'
+                self.lr_scheduler.step(val_acc)  # temporary: LR schedule in
             else:
                 # noinspection PyUnresolvedReferences
                 self.log('training_stage', 1.0)
                 stage_key = 'nopush'
-                self.lr_scheduler.step(val_loss)
+                self.lr_scheduler.step(val_acc)
 
-        if val_loss < self.best_loss:
-            log(f'Saving best model, loss: ' + str(val_loss))
-            self.best_loss = val_loss
+        if val_acc > self.best_acc:
+            log(f'Saving best model, accuracy: ' + str(val_acc))
+            self.best_acc = val_acc
             save_model_w_condition(
                 model=self.ppnet,
                 model_dir=self.checkpoints_dir,
                 model_name=f'{stage_key}_best',
-                accu=val_loss,
+                accu=val_acc,
                 target_accu=0.0,
                 log=log
             )
@@ -530,7 +538,7 @@ class PatchClassificationModule(LightningModule):
             model=self.ppnet,
             model_dir=self.checkpoints_dir,
             model_name=f'{stage_key}_last',
-            accu=val_loss,
+            accu=val_acc,
             target_accu=0.0,
             log=log
         )
@@ -539,7 +547,8 @@ class PatchClassificationModule(LightningModule):
         metrics = self.metrics[split_key]
         n_batches = metrics['n_batches']
 
-        for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation', 'orthogonal_loss', 'subspace_separation']:
+        # for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation', 'orthogonal_loss', 'subspace_separation']:
+        for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         if len(metrics['pos_scores']) > 0 or len(metrics['neg_scores']) > 0:
@@ -583,10 +592,21 @@ class PatchClassificationModule(LightningModule):
         return self._epoch_end('test')
 
     def configure_optimizers(self):
+        aspp_params = [
+            self.ppnet.features.aspp.c0.weight,
+            self.ppnet.features.aspp.c0.bias,
+            self.ppnet.features.aspp.c1.weight,
+            self.ppnet.features.aspp.c1.bias,
+            self.ppnet.features.aspp.c2.weight,
+            self.ppnet.features.aspp.c2.bias,
+            self.ppnet.features.aspp.c3.weight,
+            self.ppnet.features.aspp.c3.bias
+        ]
+
         warm_optimizer_specs = \
             [
                 {
-                    'params': self.ppnet.add_on_layers.parameters(),
+                    'params': list(self.ppnet.add_on_layers.parameters()) + aspp_params,
                     'lr': self.warm_optimizer_lr_add_on_layers,
                     'weight_decay': self.warm_optimizer_weight_decay
                 },

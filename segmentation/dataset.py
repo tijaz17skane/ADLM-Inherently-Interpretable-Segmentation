@@ -3,6 +3,8 @@ Dataset for training prototype patch classification model on Cityscapes and SUN 
 """
 import json
 from typing import Any, List, Optional, Tuple
+
+from PIL import Image
 from tqdm import tqdm
 
 import torch
@@ -15,6 +17,17 @@ from segmentation.constants import CITYSCAPES_19_EVAL_CATEGORIES
 from settings import data_path, log
 
 import numpy as np
+
+
+def resize_label(label, size):
+    """
+    Downsample labels by nearest interpolation.
+    Other nearest methods result in misaligned labels.
+    -> F.interpolate(labels, shape, mode='nearest')
+    -> cv2.resize(labels, shape, interpolation=cv2.INTER_NEAREST)
+    """
+    label = Image.fromarray(label.astype(float)).resize(size, resample=Image.NEAREST)
+    return torch.LongTensor(np.asarray(label))
 
 
 @gin.configurable(allowlist=['mean', 'std', 'transpose_ann', 'image_margin_size', 'patch_size', 'num_classes',
@@ -258,12 +271,13 @@ class PatchClassificationDataset(VisionDataset):
             img = torch.tensor(img).permute(2, 0, 1) / 256
 
             if self.window_size is not None:
-                if not self.is_eval:
-                    scale = np.random.uniform(0.5, 2.0)
-                    window_size = int(np.round(scale * self.window_size[0])), int(np.round(scale * self.window_size[1]))
-                    window_size = min(window_size[0], target.shape[0]), min(window_size[1], target.shape[1])
-                else:
-                    window_size = self.window_size
+                # if not self.is_eval:
+                    # scale1 = np.random.uniform(0.5, 2.0)
+                    # scale2 = np.random.uniform(0.5, 2.0)
+                    # window_size = int(np.round(scale1 * self.window_size[0])), int(np.round(scale2 * self.window_size[1]))
+                    # window_size = min(window_size[0], target.shape[0]), min(window_size[1], target.shape[1])
+                # else:
+                window_size = self.window_size
 
                 window_left = np.random.randint(0, target.shape[0] - window_size[0]+1)
                 window_top = np.random.randint(0, target.shape[1] - window_size[1]+1)
@@ -310,25 +324,25 @@ class PatchClassificationDataset(VisionDataset):
             if self.target_transform is not None:
                 target = self.target_transform(target)
                 
-            target = torch.tensor(target.copy())
-            
-            if not self.is_eval:
-                img = torch.nn.functional.interpolate(img.unsqueeze(0), size=(self.window_size[0], self.window_size[1]), mode='bilinear', align_corners=False)[0]
+            # if not self.is_eval:
+                # img = torch.nn.functional.interpolate(img.unsqueeze(0), size=(self.window_size[0], self.window_size[1]), mode='bilinear', align_corners=False)[0]
 
                 # interpolate targets (integer)
-                iw = torch.linspace(0, target.shape[0]-1, self.window_size[0]).long()
-                ih = torch.linspace(0, target.shape[1]-1, self.window_size[1]).long()
-                target = target[ih[:, None], iw]
+                # iw = torch.linspace(0, target.shape[1]-1, self.window_size[0]).long()
+                # ih = torch.linspace(0, target.shape[0]-1, self.window_size[1]).long()
+                # target = target[ih[:, None], iw]
+
+            # TODO un-hardcode size
+            target = resize_label(target, size=(65, 65))
 
             # TODO
             obj_mask = None
 
-            return img, target, obj_mask.copy() if obj_mask is not None else np.zeros_like(target)
+            return img, target
         except Exception as e:
             log(f'EXCEPTION: {str(e)}')
-            return np.zeros((3, self.window_size[0], self.window_size[1]), dtype=np.float32), \
-                   np.zeros((self.window_size[0], self.window_size[1])), \
-                   np.zeros((self.window_size[0], self.window_size[1]))
+            return torch.tensor(np.zeros((3, self.window_size[0], self.window_size[1]), dtype=np.float32)), \
+                   torch.tensor(np.zeros((self.window_size[0], self.window_size[1])))
 
 
 if __name__ == '__main__':
