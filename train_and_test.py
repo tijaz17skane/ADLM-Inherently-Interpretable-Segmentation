@@ -156,6 +156,17 @@ def last_only(model, log=print):
 
 
 def warm_only(model, log=print):
+    aspp_params = [
+        model.features.aspp.c0.weight,
+        model.features.aspp.c0.bias,
+        model.features.aspp.c1.weight,
+        model.features.aspp.c1.bias,
+        model.features.aspp.c2.weight,
+        model.features.aspp.c2.bias,
+        model.features.aspp.c3.weight,
+        model.features.aspp.c3.bias
+    ]
+
     if hasattr(model, 'module'):
         model = model.module
     for p in model.features.parameters():
@@ -164,6 +175,8 @@ def warm_only(model, log=print):
         p.requires_grad = True
     model.prototype_vectors.requires_grad = True
     for p in model.last_layer.parameters():
+        p.requires_grad = True
+    for p in aspp_params:
         p.requires_grad = True
 
     log('\twarm')
