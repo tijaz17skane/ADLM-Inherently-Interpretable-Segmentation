@@ -502,10 +502,10 @@ class PatchClassificationModule(LightningModule):
 
         # Freeze the batch norm pre-trained on COCO
         # TODO uncomment after warmup
-        # self.ppnet.features.freeze_bn()
+        # self.ppnet.features._bn()
 
     def on_validation_epoch_end(self):
-        val_acc = self.metrics['val']['n_correct'] / self.metrics['val']['n_patches']
+        val_acc = (self.metrics['val']['n_correct'] / self.metrics['val']['n_patches']).item()
 
         if self.last_layer_only:
             self.log('training_stage', 2.0)

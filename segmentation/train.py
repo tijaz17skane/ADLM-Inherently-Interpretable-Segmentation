@@ -67,20 +67,20 @@ def train(
     # state_dict = torch.load('/home/sacha/proto-segmentation/deeplab_pytorch/data/models/coco/deeplabv1_resnet101/caffemodel/deeplabv1_resnet101-coco.pth')
 
     # load weights from Resnet pretrained on ImageNet
-    resnet_state_dict = torchvision.models.resnet101(pretrained=True)
+    resnet_state_dict = torchvision.models.resnet101(pretrained=True).state_dict()
     new_state_dict = {}
-    for k, v in resnet_state_dict:
+    for k, v in resnet_state_dict.items():
         new_key = torchvision_resnet_weight_key_to_deeplab2(k)
         if new_key is not None:
             new_state_dict[new_key] = v
 
-    load_result = ppnet.load_state_dict(new_state_dict, strict=False)
+    load_result = ppnet.features.load_state_dict(new_state_dict, strict=False)
+    log(str(load_result))
 
     assert len(load_result.missing_keys) == 8  # ASPP layer
     assert len(load_result.unexpected_keys) == 0
 
-    log(f'Loaded {len(new_state_dict)} weights from pretrained ResMet101')
-    log(str(load_result))
+    log(f'Loaded {len(new_state_dict)} weights from pretrained ResNet101')
 
     data_module = PatchClassificationDataModule(
         model_image_size=model_image_size,

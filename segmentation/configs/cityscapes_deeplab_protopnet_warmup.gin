@@ -8,7 +8,9 @@ construct_PPNet.pretrained = False
 construct_PPNet.prototype_shape = (190, 64, 1, 1)
 construct_PPNet.num_classes = 19
 construct_PPNet.prototype_activation_function = 'log'
-construct_PPNet.add_on_layers_type = 'regular'
+construct_PPNet.add_on_layers_type = 'deeplab'
+
+deeplabv2_resnet101_features.deeplab_n_features = 256
 
 train.model_image_size = 1024
 train.random_seed = 20220227
@@ -18,7 +20,7 @@ train.start_checkpoint = ''
 
 # these are for ImageNet and COCO
 PatchClassificationDataset.mean = [0.485, 0.456, 0.406]
-# PatchClassificationDataset.std = [0.229, 0.224, 0.225]
+PatchClassificationDataset.std = [0.229, 0.224, 0.225]
 
 # mean and STD for cityscapes
 # PatchClassificationDataset.mean = [0.28689554, 0.32513303, 0.28389177]
@@ -33,8 +35,8 @@ PatchClassificationDataset.object_masks = True
 PatchClassificationDataset.only_19_from_cityscapes = True
 
 PatchClassificationDataModule.push_length_multiplier = 32
-PatchClassificationDataModule.dataloader_n_jobs = 16
-DataLoader.batch_size = 4
+PatchClassificationDataModule.dataloader_n_jobs = 24
+DataLoader.batch_size = 16
 
 Trainer.max_epochs = 2000
 Trainer.min_epochs = 100
@@ -57,8 +59,8 @@ PatchClassificationModule.joint_optimizer_lr_add_on_layers = 3e-4
 PatchClassificationModule.joint_optimizer_lr_prototype_vectors = 3e-4
 PatchClassificationModule.joint_optimizer_weight_decay = 5e-4
 
-PatchClassificationModule.warm_optimizer_lr_add_on_layers = 3e-4
-PatchClassificationModule.warm_optimizer_lr_prototype_vectors = 3e-4
+PatchClassificationModule.warm_optimizer_lr_add_on_layers = 2e-3
+PatchClassificationModule.warm_optimizer_lr_prototype_vectors = 2e-3
 PatchClassificationModule.warm_optimizer_weight_decay = 1e-5
 
 PatchClassificationModule.last_layer_optimizer_lr = 1e-5

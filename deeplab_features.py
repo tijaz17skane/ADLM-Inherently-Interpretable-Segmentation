@@ -1,5 +1,6 @@
 from typing import Optional
 
+import gin
 import torchvision
 from torch import nn
 
@@ -65,7 +66,7 @@ def torchvision_resnet_weight_key_to_deeplab2(key: str) -> Optional[str]:
         dl_layer_num = layer_num + 1
 
         block_num = int(segments[1])
-        dl_block_str = f'block{block_num+1}'
+        dl_block_str = f'block{block_num + 1}'
 
         layer_type = segments[2]
         if layer_type == 'downsample':
@@ -101,9 +102,9 @@ def torchvision_resnet_weight_key_to_deeplab2(key: str) -> Optional[str]:
     return None
 
 
-def deeplabv2_resnet101_features(pretrained=False, **kwargs):
+@gin.configurable(allowlist=['deeplab_n_features'])
+def deeplabv2_resnet101_features(pretrained=False, deeplab_n_features: int = gin.REQUIRED, **kwargs):
     model = DeepLabV2(
-        n_classes=64, n_blocks=[3, 4, 23, 3], atrous_rates=[6, 12, 18, 24]
+        n_classes=deeplab_n_features, n_blocks=[3, 4, 23, 3], atrous_rates=[6, 12, 18, 24]
     )
-
     return model

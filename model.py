@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from deeplab_features import deeplabv3_resnet50_features, deeplabv2_resnet101_features
+from settings import log
 from resnet_features import resnet18_features, resnet34_features, resnet50_features, resnet101_features, \
     resnet152_features
 from densenet_features import densenet121_features, densenet161_features, densenet169_features, densenet201_features
@@ -142,6 +143,15 @@ class PPNet(nn.Module):
                     add_on_layers.append(nn.Sigmoid())
                 current_in_channels = current_in_channels // 2
             self.add_on_layers = nn.Sequential(*add_on_layers)
+        elif add_on_layers_type == 'deeplab':
+            log('deeplab add_on_layers')
+            self.add_on_layers = nn.Sequential(
+                nn.ReLU(),
+                nn.Conv2d(in_channels=first_add_on_layer_in_channels, 
+                          out_channels=self.prototype_shape[1],
+                          kernel_size=1),
+                nn.Sigmoid()
+            )
         else:
             self.add_on_layers = nn.Sequential(
                 nn.Conv2d(in_channels=first_add_on_layer_in_channels, out_channels=self.prototype_shape[1],
