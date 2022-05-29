@@ -12,7 +12,7 @@ from helpers import makedir, find_high_activation_crop
 
 
 # push each prototype to the nearest patch in the training set
-from segmentation.dataset import PatchClassificationDataset
+from segmentation.dataset import PatchClassificationDataset, resize_label
 from segmentation.eval import get_image_segmentation, to_tensor
 
 
@@ -151,18 +151,32 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                                prototype_img_filename_prefix=None,
                                prototype_self_act_filename_prefix=None,
                                prototype_activation_function_in_numpy=None,
-                               patch_size=64):
+                               patch_size=1):
 
-    segmentation_result = get_image_segmentation(dataset, ppnet, img,
-                                                 window_size=dataset.window_size,
-                                                 window_shift=512,
-                                                 batch_size=4)
+    # segmentation_result = get_image_segmentation(dataset, ppnet, img,
+                                                 # window_size=dataset.window_size,
+                                                 # window_shift=512,
+                                                 # batch_size=4)
 
-    protoL_input_ = segmentation_result['conv_features']
-    proto_dist_ = segmentation_result['distances']
+    img_y = torch.LongTensor(dataset.convert_targets(img_y))
+    img_tensor = to_tensor(img).unsqueeze(0).cuda()
+    conv_features = ppnet.conv_features(img_tensor)
 
-    protoL_input_ = np.transpose(protoL_input_.detach().cpu().numpy(), (0, 2, 1))
-    proto_dist_ = np.transpose(proto_dist_.detach().cpu().numpy(), (1, 0, 2))
+    # save RAM
+    del img_tensor
+
+    logits, distances = ppnet.forward_from_conv_features(conv_features)
+    del logits
+
+    conv_features = torch.nn.functional.interpolate(conv_features, size=(1024, 2048),
+                                                    mode='bilinear', align_corners=False)
+    distances = torch.nn.functional.interpolate(distances, size=(1024, 2048),
+                                                mode='bilinear', align_corners=False)
+
+    protoL_input_ = conv_features[0].detach().cpu().numpy()
+    proto_dist_ = distances[0].permute(1, 2, 0).detach().cpu().numpy()
+
+    del conv_features, distances
 
     class_to_pixel_index_dict = {key: [] for key in range(num_classes)}
 
@@ -170,7 +184,8 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
         for proto_j in range(img_y.shape[1]):
             if img_y.ndim == 2:
                 pixel_cls = int(img_y[proto_i, proto_j].item())
-                class_to_pixel_index_dict[pixel_cls].append((proto_i, proto_j))
+                if pixel_cls > 0:
+                    class_to_pixel_index_dict[pixel_cls-1].append((proto_i, proto_j))
             else:
                 for cls_i, cls_prob in enumerate(img_y[proto_i, proto_j]):
                     if cls_prob > 0:

@@ -53,34 +53,38 @@ def train(
     log(f'Starting experiment in "{results_dir}" from config {config_path}')
 
     last_checkpoint = os.path.join(results_dir, 'checkpoints', 'nopush_best.pth')
+    loaded = False
 
     if start_checkpoint:
         log(f'Loading checkpoint from {start_checkpoint}')
         ppnet = torch.load(start_checkpoint)
+        loaded = True
     elif neptune_experiment is not None and os.path.exists(last_checkpoint):
         log(f'Loading last model from {last_checkpoint}')
         ppnet = torch.load(last_checkpoint)
+        loaded = True
     else:
         ppnet = construct_PPNet(img_size=model_image_size)
 
-    # uncomment to load model pre-trained on COCO
-    # state_dict = torch.load('/home/sacha/proto-segmentation/deeplab_pytorch/data/models/coco/deeplabv1_resnet101/caffemodel/deeplabv1_resnet101-coco.pth')
+    if not loaded:
+        # uncomment to load model pre-trained on COCO
+        # state_dict = torch.load('/home/sacha/proto-segmentation/deeplab_pytorch/data/models/coco/deeplabv1_resnet101/caffemodel/deeplabv1_resnet101-coco.pth')
 
-    # load weights from Resnet pretrained on ImageNet
-    resnet_state_dict = torchvision.models.resnet101(pretrained=True).state_dict()
-    new_state_dict = {}
-    for k, v in resnet_state_dict.items():
-        new_key = torchvision_resnet_weight_key_to_deeplab2(k)
-        if new_key is not None:
-            new_state_dict[new_key] = v
+        # load weights from Resnet pretrained on ImageNet
+        resnet_state_dict = torchvision.models.resnet101(pretrained=True).state_dict()
+        new_state_dict = {}
+        for k, v in resnet_state_dict.items():
+            new_key = torchvision_resnet_weight_key_to_deeplab2(k)
+            if new_key is not None:
+                new_state_dict[new_key] = v
 
-    load_result = ppnet.features.load_state_dict(new_state_dict, strict=False)
-    log(str(load_result))
+        load_result = ppnet.features.load_state_dict(new_state_dict, strict=False)
+        log(str(load_result))
 
-    assert len(load_result.missing_keys) == 8  # ASPP layer
-    assert len(load_result.unexpected_keys) == 0
+        assert len(load_result.missing_keys) == 8  # ASPP layer
+        assert len(load_result.unexpected_keys) == 0
 
-    log(f'Loaded {len(new_state_dict)} weights from pretrained ResNet101')
+        log(f'Loaded {len(new_state_dict)} weights from pretrained ResNet101')
 
     data_module = PatchClassificationDataModule(
         model_image_size=model_image_size,
@@ -141,11 +145,9 @@ def train(
         if start_epoch != 0:
             trainer.fit_loop.current_epoch = start_epoch
 
-        trainer.fit(model=module, datamodule=data_module)
-        
         # TODO temporary
-        exit(0)
-
+        # trainer.fit(model=module, datamodule=data_module)
+        
         best_checkpoint = os.path.join(results_dir, 'checkpoints', 'nopush_best.pth')
         log(f'Loading best model from {best_checkpoint}')
         ppnet = torch.load(best_checkpoint)
@@ -227,10 +229,18 @@ def load_config_and_train(
         experiment_name: str,
         neptune_experiment: Optional[str] = None,
         pruned: bool = False,
-        start_epoch: int = 0
+        start_epoch: int = 0,
+        start_checkpoint: str = ''
 ):
     gin.parse_config_file(f'segmentation/configs/{config_path}.gin')
-    train(config_path, experiment_name, pruned=pruned, start_epoch=start_epoch, neptune_experiment=neptune_experiment)
+    train(
+        config_path=config_path,
+        experiment_name=experiment_name,
+        pruned=pruned,
+        start_epoch=start_epoch,
+        neptune_experiment=neptune_experiment,
+        start_checkpoint=start_checkpoint
+    )
 
 
 if __name__ == '__main__':
