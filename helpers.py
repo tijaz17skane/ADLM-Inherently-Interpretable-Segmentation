@@ -43,3 +43,35 @@ def find_high_activation_crop(activation_map, percentile=95):
             upper_x = j
             break
     return lower_y, upper_y+1, lower_x, upper_x+1
+
+
+def find_continuous_high_activation_crop(activation_map, patch_bbox, threshold):
+    start_h, end_h, start_w, end_w = tuple(patch_bbox)
+
+    mask = (activation_map >= threshold).astype(int)
+
+    stopped = [False, False, False, False]
+
+    # greedily enlarge the high activated window
+    while not all(stopped):
+        if not stopped[0] and start_h > 0 and np.amax(mask[start_h-1, start_w:end_w+1]) > 0.5:
+            start_h = start_h - 1
+        else:
+            stopped[0] = True
+
+        if not stopped[1] and end_h < activation_map.shape[0] - 1 and np.amax(mask[end_h+1, start_w:end_w+1]) > 0.5:
+            end_h = end_h + 1
+        else:
+            stopped[1] = True
+
+        if not stopped[2] and start_w > 0 and np.amax(mask[start_h:end_h+1, start_w-1]) > 0.5:
+            start_w = start_w - 1
+        else:
+            stopped[2] = True
+
+        if not stopped[3] and end_w < activation_map.shape[1] - 1 and np.amax(mask[start_h:end_h+1, end_w+1]) > 0.5:
+            end_w = end_w + 1
+        else:
+            stopped[3] = True
+
+    return start_h, end_h+1, start_w, end_w+1

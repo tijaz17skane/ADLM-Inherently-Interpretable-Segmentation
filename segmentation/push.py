@@ -8,12 +8,12 @@ import time
 from PIL import Image
 from tqdm import tqdm
 
-from helpers import makedir, find_high_activation_crop
+from helpers import makedir, find_continuous_high_activation_crop
 
 
 # push each prototype to the nearest patch in the training set
-from segmentation.dataset import PatchClassificationDataset, resize_label
-from segmentation.eval import get_image_segmentation, to_tensor
+from segmentation.dataset import PatchClassificationDataset
+from segmentation.eval import to_tensor
 
 
 def push_prototypes(dataset: PatchClassificationDataset,
@@ -168,33 +168,42 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
     logits, distances = ppnet.forward_from_conv_features(conv_features)
     del logits
 
-    conv_features = torch.nn.functional.interpolate(conv_features, size=(1024, 2048),
-                                                    mode='bilinear', align_corners=False)
-    distances = torch.nn.functional.interpolate(distances, size=(1024, 2048),
-                                                mode='bilinear', align_corners=False)
+    model_output_height = conv_features.shape[2]
+    model_output_width = conv_features.shape[3]
+
+    patch_height = 1024 / model_output_height
+    patch_width = 2048 / model_output_width
+
+    # conv_features = torch.nn.functional.interpolate(conv_features, size=(1024, 2048),
+                                                    # mode='bilinear', align_corners=False)
+    # distances = torch.nn.functional.interpolate(distances, size=(1024, 2048),
+                                                # mode='bilinear', align_corners=False)
 
     protoL_input_ = conv_features[0].detach().cpu().numpy()
     proto_dist_ = distances[0].permute(1, 2, 0).detach().cpu().numpy()
 
     del conv_features, distances
 
-    class_to_pixel_index_dict = {key: [] for key in range(num_classes)}
+    class_to_patch_index_dict = {key: set() for key in range(num_classes)}
 
-    for proto_i in range(img_y.shape[0]):
-        for proto_j in range(img_y.shape[1]):
-            if img_y.ndim == 2:
-                pixel_cls = int(img_y[proto_i, proto_j].item())
-                if pixel_cls > 0:
-                    class_to_pixel_index_dict[pixel_cls-1].append((proto_i, proto_j))
-            else:
-                for cls_i, cls_prob in enumerate(img_y[proto_i, proto_j]):
-                    if cls_prob > 0:
-                        class_to_pixel_index_dict[cls_i].append((proto_i, proto_j))
+    for pixel_i in range(img_y.shape[0]):
+        patch_i = int(pixel_i / patch_height)
+        for pixel_j in range(img_y.shape[1]):
+            patch_j = int(pixel_j / patch_width)
+
+            pixel_cls = int(img_y[pixel_i, pixel_j].item())
+            if pixel_cls > 0:
+                class_to_patch_index_dict[pixel_cls-1].add((patch_i, patch_j))
+
+    # proto 6 71 16 0.22671318 [563, 572, 127, 136]
+    # rf_start_h_index = int(patch_i * patch_height)
+    # patch_i rf_start_index/patch_height
+    # rf_end_h_index = int(patch_i * patch_height + patch_height) + 1
+
+    class_to_patch_index_dict = {k: list(v) for k, v in class_to_patch_index_dict.items()}
 
     prototype_shape = ppnet.prototype_shape
     n_prototypes = prototype_shape[0]
-    proto_h = prototype_shape[2]
-    proto_w = prototype_shape[3]
     max_dist = prototype_shape[1] * prototype_shape[2] * prototype_shape[3]
 
     # get the whole image
@@ -207,18 +216,14 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
         # target_class is the class of the class_specific prototype
         target_class = torch.argmax(ppnet.prototype_class_identity[j]).item()
 
-        # for model that ignores void class (no prototypes for void class)
-        if hasattr(ppnet, 'void_class') and not ppnet.void_class:
-            target_class = target_class + 1
-
         # if there are no pixels of the target_class in this image
         # we go on to the next prototype
-        if len(class_to_pixel_index_dict[target_class]) == 0:
+        if len(class_to_patch_index_dict[target_class]) == 0:
             continue
 
         # proto_dist_.shape = (patches_rows, patches_cols, n_prototypes)
-        all_dist = np.asarray([proto_dist_[proto_i, proto_j, j]
-                               for proto_i, proto_j in class_to_pixel_index_dict[target_class]])
+        all_dist = np.asarray([proto_dist_[patch_i, patch_j, j]
+                               for patch_i, patch_j in class_to_patch_index_dict[target_class]])
 
         batch_argmin_proto_dist = np.argmin(all_dist)
         batch_min_proto_dist = all_dist[batch_argmin_proto_dist]
@@ -229,20 +234,14 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
             images of the target class to the index in the entire search
             batch
             '''
-            batch_argmin_proto_dist = class_to_pixel_index_dict[target_class][batch_argmin_proto_dist]
-            proto_i, proto_j = batch_argmin_proto_dist
+            batch_argmin_proto_dist = class_to_patch_index_dict[target_class][batch_argmin_proto_dist]
+            patch_i, patch_j = batch_argmin_proto_dist
 
             # retrieve the corresponding feature map patch
-            fmap_height_start_index = proto_i * prototype_layer_stride
-            fmap_height_end_index = fmap_height_start_index + proto_h
-            fmap_width_start_index = proto_j * prototype_layer_stride
-            fmap_width_end_index = fmap_width_start_index + proto_w
+            # ProtoL.shape = (64, 129, 257)
+            batch_min_fmap_patch_j = protoL_input_[:, patch_i:patch_i+1, patch_j:patch_j+1]
 
-            # ProtoL.shape = (256, 2048, 1024)
-            batch_min_fmap_patch_j = protoL_input_[:, fmap_height_start_index:fmap_height_end_index,
-                                                   fmap_width_start_index:fmap_width_end_index]
-
-            # batch_min_fmap_patch_j.shape = (1, 1, 256)
+            # batch_min_fmap_patch_j.shape = (64, 1, 1)
             global_min_proto_dist[j] = batch_min_proto_dist
             global_min_fmap_patches[j] = batch_min_fmap_patch_j
 
@@ -252,10 +251,11 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
             # rf_prototype_j = compute_rf_prototype((search_batch.shape[2], search_batch.shape[3]),
             # batch_argmin_proto_dist, protoL_rf_info)
 
-            rf_start_h_index, rf_end_h_index = batch_argmin_proto_dist[0] * patch_size, \
-                                               (batch_argmin_proto_dist[0] + 1) * patch_size
-            rf_start_w_index, rf_end_w_index = batch_argmin_proto_dist[1] * patch_size, \
-                                               (batch_argmin_proto_dist[1] + 1) * patch_size
+            rf_start_h_index = int(patch_i * patch_height)
+            rf_end_h_index = int(patch_i * patch_height + patch_height) + 1
+
+            rf_start_w_index = int(patch_j * patch_width)
+            rf_end_w_index = int(patch_j * patch_width + patch_width) + 1
 
             rf_prototype_j = [0, rf_start_h_index, rf_end_h_index, rf_start_w_index, rf_end_w_index]
 
@@ -285,7 +285,15 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
             upsampled_act_img_j = cv2.resize(proto_act_img_j, dsize=(original_img_width, original_img_height),
                                              interpolation=cv2.INTER_CUBIC)
 
-            proto_bound_j = find_high_activation_crop(upsampled_act_img_j)
+            # high activation area = percentile 95 calculated for activation for all pixels
+            threshold = np.percentile(upsampled_act_img_j, 95)
+
+            # show activation map only on the ground truth class
+            y_mask = img_y.cpu().detach().numpy() == (target_class + 1)
+            upsampled_act_img_j = upsampled_act_img_j * y_mask
+
+            proto_bound_j = find_continuous_high_activation_crop(upsampled_act_img_j, rf_prototype_j[1:],
+                                                                 threshold=threshold)
             # crop out the image patch with high activation as prototype image
             proto_img_j = original_img_j[proto_bound_j[0]:proto_bound_j[1],
                           proto_bound_j[2]:proto_bound_j[3], :]
@@ -342,6 +350,7 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                     # overlay (upsampled) self activation on original image and save the result
                     rescaled_act_img_j = upsampled_act_img_j - np.amin(upsampled_act_img_j)
                     rescaled_act_img_j = rescaled_act_img_j / np.amax(rescaled_act_img_j)
+
                     heatmap = cv2.applyColorMap(np.uint8(255 * rescaled_act_img_j), cv2.COLORMAP_JET)
                     heatmap = np.float32(heatmap) / 255
                     heatmap = heatmap[..., ::-1]
@@ -390,4 +399,4 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                                vmin=0.0,
                                vmax=1.0)
 
-    del class_to_pixel_index_dict
+    del class_to_patch_index_dict
