@@ -5,14 +5,15 @@ import heapq
 
 import matplotlib.pyplot as plt
 import os
-import copy
 import time
 
 import cv2
 from tqdm import tqdm
+from PIL import Image
 
-from receptive_field import compute_rf_prototype
 from helpers import makedir, find_high_activation_crop
+from segmentation.dataset import resize_label
+from segmentation.eval import to_normalized_tensor
 
 
 def imsave_with_bbox(fname, img_rgb, bbox_height_start, bbox_height_end,
@@ -54,7 +55,7 @@ class ImagePatchInfo:
 
 
 # find the nearest patches in the dataset to each prototype
-def find_k_nearest_patches_to_prototypes(dataloader,  # pytorch dataloader (must be unnormalized in [0,1])
+def find_k_nearest_patches_to_prototypes(dataset,
                                          prototype_network_parallel,  # pytorch network with prototype_vectors
                                          k=5,
                                          preprocess_input_function=None,  # normalize if needed
@@ -74,36 +75,55 @@ def find_k_nearest_patches_to_prototypes(dataloader,  # pytorch dataloader (must
     prototype_shape = prototype_network_parallel.module.prototype_shape
     max_dist = prototype_shape[1] * prototype_shape[2] * prototype_shape[3]
 
-    protoL_rf_info = prototype_network_parallel.module.proto_layer_rf_info
-
     heaps = []
     # allocate an array of n_prototypes number of heaps
     for _ in range(n_prototypes):
         # a heap in python is just a maintained list
         heaps.append([])
 
-    for idx, batch in tqdm(enumerate(dataloader), desc='finding nearest patches', total=len(dataloader)):
-        search_batch_input, search_y = batch[:2]
+    for push_iter, img_id in tqdm(enumerate(dataset.img_ids), desc='finding nearest patches', total=len(dataset)):
+        img_path = dataset.get_img_path(img_id)
 
-        if preprocess_input_function is not None:
-            # print('preprocessing input for pushing ...')
-            # search_batch = copy.deepcopy(search_image_input)
-            search_batch = preprocess_input_function(search_batch_input)
+        with open(img_path, 'rb') as f:
+            img = Image.open(f).convert('RGB')
 
-        else:
-            search_batch = search_batch_input
+        # remove margins which were used for training
+        margin_size = dataset.image_margin_size
+        img = img.crop((margin_size, margin_size, img.width - margin_size, img.height - margin_size))
+        img_numpy = np.expand_dims(np.asarray(np.uint8(img)), 0).transpose((0, 3, 1, 2))
+        img_numpy = img_numpy.astype(float) / 255.0
 
         with torch.no_grad():
-            search_batch = search_batch.cuda()
+            search_batch_input = to_normalized_tensor(img).unsqueeze(0).cuda()
             protoL_input_torch, proto_dist_torch = \
-                prototype_network_parallel.module.push_forward(search_batch)
+                prototype_network_parallel.module.push_forward(search_batch_input)
+
+        model_output_height = protoL_input_torch.shape[2]
+        model_output_width = protoL_input_torch.shape[3]
+
+        # TODO un-hardcode
+        patch_height = 1024 / model_output_height
+        patch_width = 2048 / model_output_width
 
         # protoL_input_ = np.copy(protoL_input_torch.detach().cpu().numpy())
         proto_dist_ = np.copy(proto_dist_torch.detach().cpu().numpy())
 
-        for img_idx, distance_map in enumerate(proto_dist_):
+        search_y = np.load(os.path.join(dataset.annotations_dir, img_id + '.npy'))
+        if dataset.transpose_ann:
+            search_y = search_y.T
+        search_y = dataset.convert_targets(np.expand_dims(search_y, 0))
+        # -1 because we ignore void class
+        search_y = search_y - 1
 
+        # we ignore activation in 'void' class pixels
+        # (1, 190, 129, 257)(1, 1024, 2048)
+        interpolated_y = np.expand_dims(resize_label(search_y[0], size=(257, 129)).cpu().detach().numpy(), (0, 1))
+        proto_dist_ = proto_dist_ + 10e6 * (interpolated_y == -1)
+
+        for img_idx, distance_map in enumerate(proto_dist_):
             for j in range(n_prototypes):
+                target_class = torch.argmax(prototype_network_parallel.module.prototype_class_identity[j]).item()
+
                 # find the closest patches in this batch to prototype j
 
                 closest_patch_distance_to_prototype_j = np.amin(distance_map[j])
@@ -119,27 +139,36 @@ def find_k_nearest_patches_to_prototypes(dataloader,  # pytorch dataloader (must
                     # protoL_rf_info)
 
                     # TODO - un-hardcode
-                    closest_patch_indices_in_img = \
-                        [
-                            0,
-                            max(closest_patch_indices_in_distance_map_j[1] - 1, 0),
-                            min(closest_patch_indices_in_distance_map_j[1] + 1, 255),
-                            max(closest_patch_indices_in_distance_map_j[2] - 1, 0),
-                            min(closest_patch_indices_in_distance_map_j[2] + 1, 255)
-                        ]
+                    # closest_patch_indices_in_img = \
+                    # [
+                    # 0,
+                    # max(closest_patch_indices_in_distance_map_j[1] - 1, 0),
+                    # min(closest_patch_indices_in_distance_map_j[1] + 1, 255),
+                    # max(closest_patch_indices_in_distance_map_j[2] - 1, 0),
+                    # min(closest_patch_indices_in_distance_map_j[2] + 1, 255)
+                    # ]
+
+                    closest_patch_indices_in_img = [0, 0, 0, 0, 0]
+
+                    closest_patch_indices_in_img[1] = int(closest_patch_indices_in_distance_map_j[1] * patch_height)
+                    closest_patch_indices_in_img[2] = int(
+                        (closest_patch_indices_in_distance_map_j[1] + 1) * patch_height)
+
+                    closest_patch_indices_in_img[3] = int(closest_patch_indices_in_distance_map_j[2] * patch_width)
+                    closest_patch_indices_in_img[4] = int(
+                        (closest_patch_indices_in_distance_map_j[2] + 1) * patch_width)
 
                     closest_patch = \
-                        search_batch_input[img_idx, :,
+                        img_numpy[img_idx, :,
                         closest_patch_indices_in_img[1]:closest_patch_indices_in_img[2],
                         closest_patch_indices_in_img[3]:closest_patch_indices_in_img[4]]
-                    closest_patch = closest_patch.numpy()
                     closest_patch = np.transpose(closest_patch, (1, 2, 0))
 
                     # ignore empty patches
                     if closest_patch.size == 0:
                         continue
 
-                    original_img = search_batch_input[img_idx].numpy()
+                    original_img = img_numpy[img_idx]
                     original_img = np.transpose(original_img, (1, 2, 0))
 
                     if prototype_network_parallel.module.prototype_activation_function == 'log':
@@ -153,12 +182,20 @@ def find_k_nearest_patches_to_prototypes(dataloader,  # pytorch dataloader (must
                     # 4 numbers: height_start, height_end, width_start, width_end
                     patch_indices = closest_patch_indices_in_img[1:5]
 
-                    label = search_y[img_idx]
-                    if isinstance(label, torch.Tensor) and label.ndim > 1:
-                        label = int(label[closest_patch_indices_in_distance_map_j[1],
-                                          closest_patch_indices_in_distance_map_j[2]].item())
+                    labels = search_y[img_idx, closest_patch_indices_in_img[1]:closest_patch_indices_in_img[2],
+                             closest_patch_indices_in_img[3]:closest_patch_indices_in_img[4]]
+
+                    # if at least one of the pixels from the patch are from the class of the prototype,
+                    # we take this as the class label
+                    if np.any(labels == target_class):
+                        label = target_class
+                    else:
+                        # in other cases, patch label = most common of classes in pixels corresponding to the patch
+                        values, counts = np.unique(labels, return_counts=True)
+                        label = values[np.argmax(counts)]
 
                     # construct the closest patch object
+                    # TODO this takes lots of RAM
                     closest_patch = ImagePatch(patch=closest_patch,
                                                label=label,
                                                distance=closest_patch_distance_to_prototype_j,
@@ -186,14 +223,13 @@ def find_k_nearest_patches_to_prototypes(dataloader,  # pytorch dataloader (must
         heaps[j] = heaps[j][::-1]
 
         if full_save:
-
             dir_for_saving_images = os.path.join(root_dir_for_saving_images,
                                                  str(j))
             makedir(dir_for_saving_images)
 
-            labels = []
-
             for i, patch in enumerate(heaps[j]):
+                label = patch.label
+
                 # save the activation pattern of the original image where the patch comes from
                 np.save(os.path.join(dir_for_saving_images,
                                      'nearest-' + str(i + 1) + '_act.npy'),
@@ -201,13 +237,13 @@ def find_k_nearest_patches_to_prototypes(dataloader,  # pytorch dataloader (must
 
                 # save the original image where the patch comes from
                 plt.imsave(fname=os.path.join(dir_for_saving_images,
-                                              'nearest-' + str(i + 1) + '_original.png'),
+                                              'nearest-' + str(i + 1) + f'_original_{label}.png'),
                            arr=patch.original_img,
                            vmin=0.0,
                            vmax=1.0)
 
                 imsave_with_bbox(fname=os.path.join(dir_for_saving_images,
-                                                    'nearest-' + str(i + 1) + '_original_with_pixel.png'),
+                                                    'nearest-' + str(i + 1) + f'_original_with_patch_{label}.png'),
                                  img_rgb=patch.original_img,
                                  bbox_height_start=patch.patch_indices[0],
                                  bbox_height_end=patch.patch_indices[1],
@@ -215,9 +251,8 @@ def find_k_nearest_patches_to_prototypes(dataloader,  # pytorch dataloader (must
                                  bbox_width_end=patch.patch_indices[3], color=(0, 255, 255))
 
                 # overlay (upsampled) activation on original image and save the result
-                img_size = patch.original_img.shape[0]
                 upsampled_act_pattern = cv2.resize(patch.act_pattern,
-                                                   dsize=(img_size, img_size),
+                                                   dsize=(patch.original_img.shape[1], patch.original_img.shape[0]),
                                                    interpolation=cv2.INTER_CUBIC)
                 rescaled_act_pattern = upsampled_act_pattern - np.amin(upsampled_act_pattern)
                 rescaled_act_pattern = rescaled_act_pattern / np.amax(rescaled_act_pattern)
@@ -226,13 +261,13 @@ def find_k_nearest_patches_to_prototypes(dataloader,  # pytorch dataloader (must
                 heatmap = heatmap[..., ::-1]
                 overlayed_original_img = 0.5 * patch.original_img + 0.3 * heatmap
                 plt.imsave(fname=os.path.join(dir_for_saving_images,
-                                              'nearest-' + str(i + 1) + '_original_with_heatmap.png'),
+                                              'nearest-' + str(i + 1) + f'_original_with_heatmap_{label}.png'),
                            arr=overlayed_original_img,
                            vmin=0.0,
                            vmax=1.0)
 
                 imsave_with_bbox(fname=os.path.join(dir_for_saving_images,
-                                                    'nearest-' + str(i + 1) + '_original_with_heatmap_and_pixel.png'),
+                                                    'nearest-' + str(i + 1) + f'_original_with_heatmap_and_patch_{label}.png'),
                                  img_rgb=overlayed_original_img,
                                  bbox_height_start=patch.patch_indices[0],
                                  bbox_height_end=patch.patch_indices[1],
@@ -263,17 +298,17 @@ def find_k_nearest_patches_to_prototypes(dataloader,  # pytorch dataloader (must
                 high_act_patch = patch.original_img[high_act_patch_indices[0]:high_act_patch_indices[1],
                                  high_act_patch_indices[2]:high_act_patch_indices[3], :]
                 np.save(os.path.join(dir_for_saving_images,
-                                     'nearest-' + str(i + 1) + '_high_act_patch_indices.npy'),
+                                     'nearest-' + str(i + 1) + f'_high_act_patch_indices_{label}.npy'),
                         high_act_patch_indices)
                 plt.imsave(fname=os.path.join(dir_for_saving_images,
-                                              'nearest-' + str(i + 1) + '_high_act_patch.png'),
+                                              'nearest-' + str(i + 1) + f'_high_act_patch_{label}.png'),
                            arr=high_act_patch,
                            vmin=0.0,
                            vmax=1.0)
 
                 # save the original image with bounding box showing high activation patch
                 imsave_with_bbox(fname=os.path.join(dir_for_saving_images,
-                                                    'nearest-' + str(i + 1) + '_high_act_patch_in_original_img.png'),
+                                                    'nearest-' + str(i + 1) + f'_high_act_patch_in_original_img_{label}.png'),
                                  img_rgb=patch.original_img,
                                  bbox_height_start=high_act_patch_indices[0],
                                  bbox_height_end=high_act_patch_indices[1],

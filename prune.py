@@ -8,7 +8,7 @@ import torch
 from helpers import makedir
 import find_nearest
 
-def prune_prototypes(dataloader,
+def prune_prototypes(dataset,
                      prototype_network_parallel,
                      k,
                      prune_threshold,
@@ -20,7 +20,7 @@ def prune_prototypes(dataloader,
                      copy_prototype_imgs=True):
     ### run global analysis
     nearest_train_patch_class_ids = \
-        find_nearest.find_k_nearest_patches_to_prototypes(dataloader=dataloader,
+        find_nearest.find_k_nearest_patches_to_prototypes(dataset=dataset,
                                                           prototype_network_parallel=prototype_network_parallel,
                                                           k=k,
                                                           preprocess_input_function=preprocess_input_function,

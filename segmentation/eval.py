@@ -1,8 +1,16 @@
 from torchvision import transforms
 import torch
 import numpy as np
+from torchvision import transforms
+from segmentation.constants import CITYSCAPES_MEAN, CITYSCAPES_STD
 
 to_tensor = transforms.ToTensor()
+
+
+to_normalized_tensor = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(CITYSCAPES_MEAN, CITYSCAPES_STD)
+])
 
 
 def get_conv_features(dataset, ppnet, img, window_size, window_shift, batch_size):

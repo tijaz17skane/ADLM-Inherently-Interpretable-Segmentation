@@ -7,17 +7,16 @@ import torch.utils.data
 
 import prune
 import save
-import train_and_test as tnt
 from preprocess import preprocess
 from segmentation.data_module import PatchClassificationDataModule
 from log import create_logger
+from segmentation.dataset import PatchClassificationDataset
 
 
 def run_pruning(config_name: str, experiment_name: str, k: int = 6, prune_threshold: int = 3):
     gin.parse_config_file(f'segmentation/configs/{config_name}.gin', skip_unknown=True)
     gin.parse_config_file(os.path.join(os.environ['RESULTS_DIR'], experiment_name, 'config.gin'),
                           skip_unknown=True)
-    gin.parse_config('DataLoader.batch_size=256')
 
     model_path = os.path.join(os.environ['RESULTS_DIR'], experiment_name, 'checkpoints/push_best.pth')
     output_dir = os.path.join(os.environ['RESULTS_DIR'], experiment_name, 'pruned')
@@ -41,6 +40,14 @@ def run_pruning(config_name: str, experiment_name: str, k: int = 6, prune_thresh
     # push set: needed for pruning because it is unnormalized
     train_push_loader = data_module.train_push_dataloader(batch_size=1)
 
+    push_dataset = PatchClassificationDataset(
+        split_key='train',
+        is_eval=True,
+        model_image_size=data_module.model_image_size,
+        push_prototypes=True,
+        length_multiplier=1
+    )
+
     def preprocess_push_input(x):
         return preprocess(x, mean=train_push_loader.dataset.mean, std=train_push_loader.dataset.std)
 
@@ -54,7 +61,7 @@ def run_pruning(config_name: str, experiment_name: str, k: int = 6, prune_thresh
                         # class_specific=class_specific, log=log)
         # log(f"Accuracy before pruning: {accu}")
 
-        prune.prune_prototypes(dataloader=train_push_loader,
+        prune.prune_prototypes(dataset=push_dataset,
                                prototype_network_parallel=ppnet_multi,
                                k=k,
                                prune_threshold=prune_threshold,

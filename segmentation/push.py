@@ -13,7 +13,7 @@ from helpers import makedir, find_continuous_high_activation_crop
 
 # push each prototype to the nearest patch in the training set
 from segmentation.dataset import PatchClassificationDataset
-from segmentation.eval import to_tensor
+from segmentation.eval import to_tensor, to_normalized_tensor
 
 
 def push_prototypes(dataset: PatchClassificationDataset,
@@ -159,7 +159,7 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                                                  # batch_size=4)
 
     img_y = torch.LongTensor(dataset.convert_targets(img_y))
-    img_tensor = to_tensor(img).unsqueeze(0).cuda()
+    img_tensor = to_normalized_tensor(img).unsqueeze(0).cuda()
     conv_features = ppnet.conv_features(img_tensor)
 
     # save RAM
