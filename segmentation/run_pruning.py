@@ -31,7 +31,7 @@ def run_pruning(config_name: str, experiment_name: str, k: int = 6, prune_thresh
 
     # load the data
     # TODO use configurable value for model_image_size here
-    data_module = PatchClassificationDataModule(model_image_size=224)
+    data_module = PatchClassificationDataModule(batch_size=1)
 
     # TODO: implement test here for segmentation
     # test_loader = data_module.val_dataloader(batch_size=1)
@@ -42,9 +42,7 @@ def run_pruning(config_name: str, experiment_name: str, k: int = 6, prune_thresh
     push_dataset = PatchClassificationDataset(
         split_key='train',
         is_eval=True,
-        model_image_size=data_module.model_image_size,
-        push_prototypes=True,
-        length_multiplier=1
+        push_prototypes=True
     )
 
     def preprocess_push_input(x):

@@ -50,7 +50,6 @@ class PatchClassificationModule(LightningModule):
             warm_optimizer_lr_prototype_vectors: float = gin.REQUIRED,
             warm_optimizer_weight_decay: float = gin.REQUIRED,
             last_layer_optimizer_lr: float = gin.REQUIRED,
-            warmup_batches: int = gin.REQUIRED,
             ignore_void_class: bool = False
     ):
         super().__init__()
@@ -71,7 +70,6 @@ class PatchClassificationModule(LightningModule):
         self.warm_optimizer_lr_prototype_vectors = warm_optimizer_lr_prototype_vectors
         self.warm_optimizer_weight_decay = warm_optimizer_weight_decay
         self.last_layer_optimizer_lr = last_layer_optimizer_lr
-        self.warmup_batches = warmup_batches
         self.ignore_void_class = ignore_void_class
 
         os.makedirs(self.prototypes_dir, exist_ok=True)
@@ -123,7 +121,7 @@ class PatchClassificationModule(LightningModule):
         target = target.flatten()
 
         if self.ignore_void_class:
-            # do not predict label for void class
+            # do not predict label for void class (0)
             target_not_void = (target != 0).nonzero().squeeze()
             target = target[target_not_void] - 1
             output = output[target_not_void]
@@ -170,7 +168,7 @@ class PatchClassificationModule(LightningModule):
 
                 for default, pg in zip(self.optimizer_defaults, optimizer.param_groups):
                     pg['lr'] = ((1 - (self.trainer.global_step - self.start_step) /
-                                 self.current_max_steps) ** self.poly_lr_power) * default
+                                 self.max_steps) ** self.poly_lr_power) * default
 
     def training_step(self, batch, batch_idx):
         return self._step('train', batch)
@@ -182,18 +180,6 @@ class PatchClassificationModule(LightningModule):
         return self._step('test', batch)
 
     def on_train_epoch_start(self):
-        if self.last_layer_only:
-            last_only(model=self.ppnet, log=log)
-        else:
-            if self.current_epoch < self.num_warm_epochs:
-                if self.current_epoch == 0:
-                    log('WARM-UP TRAINING START.')
-                warm_only(model=self.ppnet, log=log)
-            else:
-                joint(model=self.ppnet, log=log)
-                if self.current_epoch == self.num_warm_epochs:
-                    log('JOINT TRAINING START.')
-
         # reset metrics
         for split_key in self.metrics.keys():
             self.metrics[split_key] = reset_metrics()
@@ -204,7 +190,7 @@ class PatchClassificationModule(LightningModule):
     def on_validation_epoch_end(self):
         val_acc = (self.metrics['val']['n_correct'] / self.metrics['val']['n_patches']).item()
 
-        self.log('training_stage', self.training_phase)
+        self.log('training_stage', float(self.training_phase))
 
         if self.training_phase == 0:
             stage_key = 'warmup'

@@ -87,8 +87,11 @@ class PatchClassificationDataset(VisionDataset):
         return os.path.join(self.img_dir, img_id + '.png')
 
     def __getitem__(self, index: int) -> Any:
-        img = self.loaded_images[index]
-        ann = self.loaded_annotations[index]
+        img_id = self.img_ids[index]
+        img_path = os.path.join(self.img_dir, img_id + '.npy')
+        ann_path = os.path.join(self.annotations_dir, img_id + '.npy')
+        img = np.load(img_path)
+        ann = np.load(ann_path)
 
         if self.convert_targets is not None:
             ann = self.convert_targets(ann)
