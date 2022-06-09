@@ -2,6 +2,7 @@
 Pytorch Lightning Module for training prototype segmentation model on Cityscapes and SUN datasets
 """
 import os
+from collections import Counter
 from typing import Dict, Optional
 
 import gin
@@ -26,7 +27,9 @@ def reset_metrics() -> Dict:
         'n_batches': 0,
         'n_patches': 0,
         'cross_entropy': 0,
-        'loss': 0
+        'loss': 0,
+        'class_patches_total': Counter(),
+        'patches_nearest_prototypes': Counter(),
     }
 
 
@@ -98,6 +101,12 @@ class PatchClassificationModule(LightningModule):
             last_only(model=self.ppnet, log=log)
             log('LAST LAYER TRAINING START.')
 
+        # helper collection for prototype re-balancing
+        self.cls_prototypes = []
+        for cls_num in range(self.ppnet.prototype_class_identity.shape[1]):
+            cls_identity = self.ppnet.prototype_class_identity[:, cls_num]
+            self.cls_prototypes.append((cls_identity == 1).nonzero().flatten().cpu().detach().numpy())
+
     def forward(self, x):
         return self.ppnet(x)
 
@@ -114,17 +123,19 @@ class PatchClassificationModule(LightningModule):
         image = image.to(self.device)
         target = target.to(self.device).to(torch.float32)
         output, patch_distances = self.ppnet.forward(image)
-        del patch_distances  # optimize GPU RAM
 
         # we flatten target/output - classification is done per patch
         output = output.reshape(-1, output.shape[-1])
         target = target.flatten()
+        patch_distances = patch_distances.permute(1, 2, 3, 0)
+        patch_distances = patch_distances.reshape(-1, patch_distances.shape[0])
 
         if self.ignore_void_class:
             # do not predict label for void class (0)
             target_not_void = (target != 0).nonzero().squeeze()
             target = target[target_not_void] - 1
             output = output[target_not_void]
+            patch_distances = patch_distances[target_not_void]
 
         cross_entropy = torch.nn.functional.cross_entropy(
             output,
@@ -149,10 +160,8 @@ class PatchClassificationModule(LightningModule):
 
         if split_key == 'train':
             optimizer = self.optimizers()
-
             optimizer.zero_grad()
             self.manual_backward(loss)
-
             optimizer.step()
 
             self.log('train_loss_step', loss_value, on_step=True, prog_bar=True)
@@ -160,7 +169,8 @@ class PatchClassificationModule(LightningModule):
             lr = get_lr(optimizer)
             self.log('lr', lr, on_step=True)
 
-            if self.training_phase != 2:  # LR schedule is not used in last layer fine-tuning
+            # LR scheduler
+            if self.training_phase != 2:  # LR scheduler is not used in last layer fine-tuning
                 if self.optimizer_defaults is None:
                     self.optimizer_defaults = []
                     for pg in optimizer.param_groups:
@@ -169,6 +179,21 @@ class PatchClassificationModule(LightningModule):
                 for default, pg in zip(self.optimizer_defaults, optimizer.param_groups):
                     pg['lr'] = ((1 - (self.trainer.global_step - self.start_step) /
                                  self.max_steps) ** self.poly_lr_power) * default
+
+            with torch.no_grad():
+                nearest_patch_prototypes = torch.argmin(patch_distances, dim=1).flatten()
+
+                for cls_num in range(self.ppnet.prototype_class_identity.shape[1]):
+                    is_pred_cls = output == cls_num
+                    total_cls_pixels = torch.sum(is_pred_cls).item()
+
+                    if total_cls_pixels > 0:
+                        metrics['class_patches_total'][cls_num] += total_cls_pixels
+
+                        for proto_num in self.cls_prototypes[cls_num]:
+                            metrics['patches_nearest_prototypes'][proto_num] += torch.sum(
+                                (nearest_patch_prototypes == proto_num) & is_pred_cls
+                            ).item()
 
     def training_step(self, batch, batch_idx):
         return self._step('train', batch)
