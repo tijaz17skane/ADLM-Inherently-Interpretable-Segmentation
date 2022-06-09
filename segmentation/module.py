@@ -29,8 +29,6 @@ def reset_metrics() -> Dict:
         'n_patches': 0,
         'cross_entropy': 0,
         'loss': 0,
-        'proto_class_patches_total': Counter(),
-        'patches_nearest_prototypes': Counter(),
     }
 
 
@@ -57,6 +55,7 @@ class PatchClassificationModule(LightningModule):
             last_layer_optimizer_lr: float = gin.REQUIRED,
             prototype_rebalancing_threshold: float = gin.REQUIRED,
             prototype_initialization_method: str = gin.REQUIRED,
+            prototype_rebalance_every: int = gin.REQUIRED,
             ignore_void_class: bool = False
     ):
         super().__init__()
@@ -78,6 +77,7 @@ class PatchClassificationModule(LightningModule):
         self.warm_optimizer_weight_decay = warm_optimizer_weight_decay
         self.last_layer_optimizer_lr = last_layer_optimizer_lr
         self.prototype_rebalancing = prototype_rebalancing
+        self.prototype_rebalance_every = prototype_rebalance_every
         self.prototype_rebalancing_threshold = prototype_rebalancing_threshold
         self.prototype_initialization_method = prototype_initialization_method
         self.ignore_void_class = ignore_void_class
@@ -119,6 +119,11 @@ class PatchClassificationModule(LightningModule):
                 self.proto2cls[proto_num] = cls_num
 
         self.ppnet.prototype_class_identity = self.ppnet.prototype_class_identity.cuda()
+        self.rebalance_epoch_counter = 0
+        self.rebalancing_stats = {
+            'proto_class_patches_total': Counter(),
+            'patches_nearest_prototypes': Counter()
+        }
 
     def forward(self, x):
         return self.ppnet(x)
@@ -206,14 +211,14 @@ class PatchClassificationModule(LightningModule):
 
                         if total_cls_pixels > 0:
                             for proto_num in self.cls_prototypes[cls_num]:
-                                metrics['patches_nearest_prototypes'][proto_num] += torch.sum(
+                                self.rebalancing_stats['patches_nearest_prototypes'][proto_num] += torch.sum(
                                     (nearest_patch_prototypes == proto_num) & is_pred_cls
                                 ).item()
-                                metrics['proto_class_patches_total'][proto_num] += total_cls_pixels
+                                self.rebalancing_stats['proto_class_patches_total'][proto_num] += total_cls_pixels
 
     def rebalance_prototypes(self):
-        total_cls_patches = self.metrics['train']['proto_class_patches_total']
-        prototypes_n_nearest = self.metrics['train']['patches_nearest_prototypes']
+        total_cls_patches = self.rebalancing_stats['proto_class_patches_total']
+        prototypes_n_nearest = self.rebalancing_stats['patches_nearest_prototypes']
 
         cls_proto_saturation = np.full(len(self.cls_prototypes), dtype=float, fill_value=2.0)
         proto_nums, frac_top_proto = [], []
@@ -243,7 +248,7 @@ class PatchClassificationModule(LightningModule):
                 break
 
             while cls_i < self.ppnet.num_classes and cls_proto_saturation[top_classes_by_proto_saturation[cls_i]] > 1.1:
-                cls_i = cls_i + 1
+                cls_i += 1
 
             if cls_i >= self.ppnet.num_classes:
                 break
@@ -272,13 +277,14 @@ class PatchClassificationModule(LightningModule):
             self.ppnet.prototype_class_identity[proto_num] = 0.0
             self.ppnet.prototype_class_identity[proto_num, saturated_class] = 1.0
 
-            cls_i = cls_i + 1
+            cls_i += 1
 
-        if any_moved:
+        if any_moved or self.rebalance_epoch_counter == 0:
             # log new class identity
             np_identity = self.ppnet.prototype_class_identity.cpu().detach().numpy()
             os.makedirs(f'{self.checkpoints_dir}/prototype_identity', exist_ok=True)
-            np.save(f'{self.checkpoints_dir}/prototype_identity/{self.trainer.global_step}', np_identity)
+            np.save(f'{self.checkpoints_dir}/prototype_identity/{self.training_phase}_{self.trainer.global_step}',
+                    np_identity)
 
             # re-initialize helper collections for prototype re-balancing
             self.cls_prototypes = []
@@ -330,7 +336,13 @@ class PatchClassificationModule(LightningModule):
             torch.save(obj=self.ppnet, f=os.path.join(self.checkpoints_dir, f'{stage_key}_best.pth'))
 
         if self.prototype_rebalancing is not None and self.trainer.global_step >= self.prototype_rebalancing:
-            self.rebalance_prototypes()
+            if self.rebalance_epoch_counter % self.rebalance_epoch_counter == 0:
+                self.rebalance_prototypes()
+                self.rebalancing_stats = {
+                    'proto_class_patches_total': Counter(),
+                    'patches_nearest_prototypes': Counter()
+                }
+            self.rebalance_epoch_counter += 1
 
     def _epoch_end(self, split_key: str):
         metrics = self.metrics[split_key]
@@ -346,7 +358,7 @@ class PatchClassificationModule(LightningModule):
         return self._epoch_end('train')
 
     def validation_epoch_end(self, step_outputs):
-        p = self.ppnet.prototype_vectors.view(self.ppnet.num_prototypes, -1).cpu()
+        p = torch.sigmoid(self.ppnet.prototype_vectors).view(self.ppnet.num_prototypes, -1).cpu()
         with torch.no_grad():
             p_avg_pair_dist = torch.mean(list_of_distances(p, p))
         self.log('p dist pair', p_avg_pair_dist.item())

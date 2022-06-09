@@ -16,11 +16,11 @@ train.random_seed = 20220227
 train.early_stopping_patience_last_layer = 20
 train.start_checkpoint = ''
 
-train.warmup_steps = 100000
-train.joint_steps = 150000
+train.warmup_steps = 25000
+train.joint_steps = 50000
 train.warmup_batch_size = 32
 train.joint_batch_size = 4
-train.prototype_rebalancing_start = 450 # ~5 epochs with batch size 32
+train.prototype_rebalancing_start = 1850 # ~20 epochs with batch size 32
 
 PatchClassificationDataset.mean = [0.485, 0.456, 0.406]
 PatchClassificationDataset.std = [0.229, 0.224, 0.225]
@@ -38,16 +38,17 @@ PatchClassificationModule.joint_optimizer_lr_add_on_layers = 2e-5
 PatchClassificationModule.joint_optimizer_lr_prototype_vectors = 2e-5
 PatchClassificationModule.joint_optimizer_weight_decay = 5e-4
 
-PatchClassificationModule.warm_optimizer_lr_add_on_layers = 1e-3
-PatchClassificationModule.warm_optimizer_lr_prototype_vectors = 1e-3
+PatchClassificationModule.warm_optimizer_lr_add_on_layers = 2e-3
+PatchClassificationModule.warm_optimizer_lr_prototype_vectors = 2e-3
 PatchClassificationModule.warm_optimizer_weight_decay = 0.0
 
 PatchClassificationModule.last_layer_optimizer_lr = 1e-5
 
 PatchClassificationModule.ignore_void_class = True
 PatchClassificationModule.poly_lr_power = 0.9
-PatchClassificationModule.prototype_rebalancing_threshold = 0.02
+PatchClassificationModule.prototype_rebalancing_threshold = 0.01
 PatchClassificationModule.prototype_initialization_method = 'mean'
+PatchClassificationModule.prototype_rebalance_every = 4
 
 PPNet.bottleneck_stride = 1
 PPNet.patch_classification = True
