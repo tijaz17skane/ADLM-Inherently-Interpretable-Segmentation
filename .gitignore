@@ -171,3 +171,7 @@ results/
 *.pth
 *.caffemodel
 pretrained_models
+*.zip
+
+*.pdf
+*.png

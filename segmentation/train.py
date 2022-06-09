@@ -44,6 +44,7 @@ def train(
         joint_steps: int = gin.REQUIRED,
         warmup_batch_size: int = gin.REQUIRED,
         joint_batch_size: int = gin.REQUIRED,
+        prototype_rebalancing_start: int = gin.REQUIRED,
 ):
     seed_everything(random_seed)
 
@@ -126,7 +127,8 @@ def train(
                 model_dir=results_dir,
                 ppnet=ppnet,
                 training_phase=0,
-                max_steps=warmup_steps
+                max_steps=warmup_steps,
+                prototype_rebalancing=prototype_rebalancing_start
             )
             trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
                               min_steps=1, max_steps=warmup_steps)
@@ -140,7 +142,8 @@ def train(
             model_dir=results_dir,
             ppnet=ppnet,
             training_phase=1,
-            max_steps=joint_steps
+            max_steps=joint_steps,
+            prototype_rebalancing=0
         )
         trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
                           min_steps=1, max_steps=joint_steps)
@@ -199,7 +202,8 @@ def train(
     module = PatchClassificationModule(
         model_dir=os.path.join(results_dir, 'pruned') if pruned else results_dir,
         ppnet=ppnet,
-        training_phase=2
+        training_phase=2,
+        prototype_rebalancing=None
     )
     current_epoch = trainer.current_epoch
     trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
