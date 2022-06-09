@@ -242,6 +242,8 @@ class PatchClassificationModule(LightningModule):
                 break
 
             saturated_class = top_classes_by_proto_saturation[i]
+            if cls_proto_saturation[saturated_class] > 1.1:
+                break
 
             if (saturated_class == self.proto2cls[proto_num] or
                     cls_proto_saturation[saturated_class] < self.prototype_rebalancing_threshold):
