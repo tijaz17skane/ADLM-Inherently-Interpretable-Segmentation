@@ -235,6 +235,7 @@ class PatchClassificationModule(LightningModule):
 
         # up to "NUM_CLASSES" prototypes are moved to different classes
         cls_i = 0
+        any_moved = False
         for proto_ind in np.argsort(frac_top_proto)[:self.ppnet.num_classes]:
             proto_num = proto_nums[proto_ind]
 
@@ -254,6 +255,7 @@ class PatchClassificationModule(LightningModule):
 
             log(f'Moving prototype {proto_num} ({(frac_top_proto[proto_ind]*100):.4f}%) '
                 f'from class {self.proto2cls[proto_num]} to class {saturated_class}')
+            any_moved = True
 
             if self.prototype_initialization_method == 'random':
                 torch.nn.init.normal_(self.ppnet.prototype_vectors[proto_num], mean=0, std=0.01)
@@ -272,20 +274,24 @@ class PatchClassificationModule(LightningModule):
 
             cls_i = cls_i + 1
 
-        # log new class identity
-        np_identity = self.ppnet.prototype_class_identity.cpu().detach().numpy()
-        os.makedirs(f'{self.checkpoints_dir}/prototype_identity', exist_ok=True)
-        np.save(f'{self.checkpoints_dir}/prototype_identity/{self.trainer.global_step}', np_identity)
+        if any_moved:
+            # log new class identity
+            np_identity = self.ppnet.prototype_class_identity.cpu().detach().numpy()
+            os.makedirs(f'{self.checkpoints_dir}/prototype_identity', exist_ok=True)
+            np.save(f'{self.checkpoints_dir}/prototype_identity/{self.trainer.global_step}', np_identity)
 
-        # re-initialize helper collections for prototype re-balancing
-        self.cls_prototypes = []
-        self.proto2cls = {}
-        for cls_num in range(self.ppnet.prototype_class_identity.shape[1]):
-            cls_identity = self.ppnet.prototype_class_identity[:, cls_num]
-            cls_prototypes = (cls_identity == 1).nonzero().flatten().cpu().detach().numpy()
-            self.cls_prototypes.append(cls_prototypes)
-            for proto_num in cls_prototypes:
-                self.proto2cls[proto_num] = cls_num
+            # re-initialize helper collections for prototype re-balancing
+            self.cls_prototypes = []
+            self.proto2cls = {}
+            for cls_num in range(self.ppnet.prototype_class_identity.shape[1]):
+                cls_identity = self.ppnet.prototype_class_identity[:, cls_num]
+                cls_prototypes = (cls_identity == 1).nonzero().flatten().cpu().detach().numpy()
+                self.cls_prototypes.append(cls_prototypes)
+                for proto_num in cls_prototypes:
+                    self.proto2cls[proto_num] = cls_num
+
+            # re-initialize last layer
+            self.ppnet.set_last_layer_incorrect_connection(incorrect_strength=-0.5)
 
     def training_step(self, batch, batch_idx):
         return self._step('train', batch)
