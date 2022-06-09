@@ -143,7 +143,7 @@ def train(
             ppnet=ppnet,
             training_phase=1,
             max_steps=joint_steps,
-            prototype_rebalancing=0
+            prototype_rebalancing=1
         )
         trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
                           min_steps=1, max_steps=joint_steps)

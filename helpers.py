@@ -45,7 +45,7 @@ def find_high_activation_crop(activation_map, percentile=95):
     return lower_y, upper_y+1, lower_x, upper_x+1
 
 
-def find_continuous_high_activation_crop(activation_map, patch_bbox, threshold):
+def find_continuous_high_activation_crop(activation_map, patch_bbox, threshold, add_margin=5):
     start_h, end_h, start_w, end_w = tuple(patch_bbox)
 
     mask = (activation_map >= threshold).astype(int)
@@ -73,5 +73,10 @@ def find_continuous_high_activation_crop(activation_map, patch_bbox, threshold):
             end_w = end_w + 1
         else:
             stopped[3] = True
+
+    start_h = max(start_h - add_margin, 0)
+    start_w = max(start_w - add_margin, 0)
+    end_h = min(end_h + add_margin, activation_map.shape[0] - 1)
+    end_w = min(end_w + add_margin, activation_map.shape[1] - 1)
 
     return start_h, end_h+1, start_w, end_w+1

@@ -212,7 +212,6 @@ class PatchClassificationModule(LightningModule):
                                 metrics['proto_class_patches_total'][proto_num] += total_cls_pixels
 
     def rebalance_prototypes(self):
-        log(f'Re-balancing prototype classes...')
         total_cls_patches = self.metrics['train']['proto_class_patches_total']
         prototypes_n_nearest = self.metrics['train']['patches_nearest_prototypes']
 
@@ -235,16 +234,20 @@ class PatchClassificationModule(LightningModule):
         top_classes_by_proto_saturation = np.argsort(-cls_proto_saturation)
 
         # up to "NUM_CLASSES" prototypes are moved to different classes
-        for i, proto_ind in enumerate(np.argsort(frac_top_proto)[:self.ppnet.num_classes]):
+        cls_i = 0
+        for proto_ind in np.argsort(frac_top_proto)[:self.ppnet.num_classes]:
             proto_num = proto_nums[proto_ind]
 
             if frac_top_proto[proto_ind] >= self.prototype_rebalancing_threshold:
                 break
 
-            saturated_class = top_classes_by_proto_saturation[i]
-            if cls_proto_saturation[saturated_class] > 1.1:
+            while cls_i < self.ppnet.num_classes and cls_proto_saturation[top_classes_by_proto_saturation[cls_i]] > 1.1:
+                cls_i = cls_i + 1
+
+            if cls_i >= self.ppnet.num_classes:
                 break
 
+            saturated_class = top_classes_by_proto_saturation[cls_i]
             if (saturated_class == self.proto2cls[proto_num] or
                     cls_proto_saturation[saturated_class] < self.prototype_rebalancing_threshold):
                 break
@@ -252,14 +255,22 @@ class PatchClassificationModule(LightningModule):
             log(f'Moving prototype {proto_num} ({(frac_top_proto[proto_ind]*100):.4f}%) '
                 f'from class {self.proto2cls[proto_num]} to class {saturated_class}')
 
+            if self.prototype_initialization_method == 'random':
+                torch.nn.init.normal_(self.ppnet.prototype_vectors[proto_num], mean=0, std=0.01)
+            elif self.prototype_initialization_method == 'mean':
+                cls_proto_mean = torch.zeros((self.ppnet.prototype_vectors.shape[1], 1, 1),
+                                             dtype=torch.float, device=self.ppnet.prototype_vectors.device)
+                for cls_proto_num in self.cls_prototypes[saturated_class]:
+                    cls_proto_mean = cls_proto_mean + self.ppnet.prototype_vectors[cls_proto_num]
+                cls_proto_mean = cls_proto_mean / len(self.cls_prototypes[saturated_class])
+                self.ppnet.prototype_vectors.data[proto_num] = cls_proto_mean
+            else:
+                raise NotImplementedError(f'Not implemented: {self.prototype_initialization_method}')
+
             self.ppnet.prototype_class_identity[proto_num] = 0.0
             self.ppnet.prototype_class_identity[proto_num, saturated_class] = 1.0
 
-            if self.prototype_initialization_method == 'random':
-                torch.nn.init.normal_(self.ppnet.prototype_vectors[proto_num], mean=0, std=0.01)
-            # TODO: 'mean' and other methods
-            else:
-                raise NotImplementedError(f'Not implemented: {self.prototype_initialization_method}')
+            cls_i = cls_i + 1
 
         # log new class identity
         np_identity = self.ppnet.prototype_class_identity.cpu().detach().numpy()

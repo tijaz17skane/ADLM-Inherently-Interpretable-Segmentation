@@ -150,11 +150,10 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                                prototype_self_act_filename_prefix=None,
                                prototype_activation_function_in_numpy=None,
                                patch_size=1):
-
     # segmentation_result = get_image_segmentation(dataset, ppnet, img,
-                                                 # window_size=dataset.window_size,
-                                                 # window_shift=512,
-                                                 # batch_size=4)
+    # window_size=dataset.window_size,
+    # window_shift=512,
+    # batch_size=4)
 
     img_y = torch.LongTensor(dataset.convert_targets(img_y))
     img_tensor = to_normalized_tensor(img).unsqueeze(0).cuda()
@@ -173,9 +172,9 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
     patch_width = 2048 / model_output_width
 
     # conv_features = torch.nn.functional.interpolate(conv_features, size=(1024, 2048),
-                                                    # mode='bilinear', align_corners=False)
+    # mode='bilinear', align_corners=False)
     # distances = torch.nn.functional.interpolate(distances, size=(1024, 2048),
-                                                # mode='bilinear', align_corners=False)
+    # mode='bilinear', align_corners=False)
 
     protoL_input_ = conv_features[0].detach().cpu().numpy()
     proto_dist_ = distances[0].permute(1, 2, 0).detach().cpu().numpy()
@@ -191,7 +190,7 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
 
             pixel_cls = int(img_y[pixel_i, pixel_j].item())
             if pixel_cls > 0:
-                class_to_patch_index_dict[pixel_cls-1].add((patch_i, patch_j))
+                class_to_patch_index_dict[pixel_cls - 1].add((patch_i, patch_j))
 
     # proto 6 71 16 0.22671318 [563, 572, 127, 136]
     # rf_start_h_index = int(patch_i * patch_height)
@@ -237,7 +236,7 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
 
             # retrieve the corresponding feature map patch
             # ProtoL.shape = (64, 129, 257)
-            batch_min_fmap_patch_j = protoL_input_[:, patch_i:patch_i+1, patch_j:patch_j+1]
+            batch_min_fmap_patch_j = protoL_input_[:, patch_i:patch_i + 1, patch_j:patch_j + 1]
 
             # batch_min_fmap_patch_j.shape = (64, 1, 1)
             global_min_proto_dist[j] = batch_min_proto_dist
@@ -288,9 +287,9 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
 
             # show activation map only on the ground truth class
             y_mask = img_y.cpu().detach().numpy() == (target_class + 1)
-            upsampled_act_img_j = upsampled_act_img_j * y_mask
+            upsampled_act_img_j_gt = upsampled_act_img_j * y_mask
 
-            proto_bound_j = find_continuous_high_activation_crop(upsampled_act_img_j, rf_prototype_j[1:],
+            proto_bound_j = find_continuous_high_activation_crop(upsampled_act_img_j_gt, rf_prototype_j[1:],
                                                                  threshold=threshold)
             # crop out the image patch with high activation as prototype image
             proto_img_j = original_img_j[proto_bound_j[0]:proto_bound_j[1],
@@ -344,6 +343,21 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                     plt.savefig(os.path.join(dir_for_saving_prototypes,
                                              prototype_img_filename_prefix + f'_{j}-original_with_box.png'))
                     plt.close()
+
+                    # overlay (upsampled) self activation on original image and save the result
+                    rescaled_act_img_j_gt = upsampled_act_img_j_gt - np.amin(upsampled_act_img_j_gt)
+                    rescaled_act_img_j_gt = rescaled_act_img_j_gt / np.amax(rescaled_act_img_j_gt)
+
+                    heatmap_gt = cv2.applyColorMap(np.uint8(255 * rescaled_act_img_j_gt), cv2.COLORMAP_JET)
+                    heatmap_gt = np.float32(heatmap_gt) / 255
+                    heatmap_gt = heatmap_gt[..., ::-1]
+
+                    overlayed_original_img_j_gt = 0.5 * original_img_j + 0.3 * heatmap_gt
+                    plt.imsave(os.path.join(dir_for_saving_prototypes,
+                                            prototype_img_filename_prefix + f'_{j}-original_with_self_act_gt_only.png'),
+                               overlayed_original_img_j_gt,
+                               vmin=0.0,
+                               vmax=1.0)
 
                     # overlay (upsampled) self activation on original image and save the result
                     rescaled_act_img_j = upsampled_act_img_j - np.amin(upsampled_act_img_j)
