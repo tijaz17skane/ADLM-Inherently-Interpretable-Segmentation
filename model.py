@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from deeplab_features import deeplabv3_resnet50_features, deeplabv2_resnet101_features
+from deeplab_features import deeplabv2_resnet101_features
 from settings import log
 from resnet_features import resnet18_features, resnet34_features, resnet50_features, resnet101_features, \
     resnet152_features
@@ -26,7 +26,6 @@ base_architecture_to_features = {'resnet18': resnet18_features,
                                  'densenet169': densenet169_features,
                                  'densenet201': densenet201_features,
                                  'deeplabv2_resnet101': deeplabv2_resnet101_features,
-                                 'deeplabv3_resnet50': deeplabv3_resnet50_features,
                                  'vgg11': vgg11_features,
                                  'vgg11_bn': vgg11_bn_features,
                                  'vgg13': vgg13_features,
@@ -37,18 +36,13 @@ base_architecture_to_features = {'resnet18': resnet18_features,
                                  'vgg19_bn': vgg19_bn_features}
 
 
-@gin.configurable(allowlist=['void_negative_weight', 'bottleneck_stride', 'patch_classification',
-                             'void_class', 'argmax_only', 'tesnet'])
+@gin.configurable(allowlist=['bottleneck_stride', 'patch_classification'])
 class PPNet(nn.Module):
     def __init__(self, features, img_size, prototype_shape,
                  proto_layer_rf_info, num_classes, init_weights=True,
                  prototype_activation_function='log',
                  add_on_layers_type='bottleneck',
-                 void_negative_weight: Optional[float] = None,
                  bottleneck_stride: Optional[int] = None,
-                 void_class: bool = False,
-                 argmax_only: bool = False,
-                 tesnet: bool = False,
                  patch_classification: bool = False):
 
         super(PPNet, self).__init__()
@@ -57,15 +51,8 @@ class PPNet(nn.Module):
         self.num_prototypes = prototype_shape[0]
         self.num_classes = num_classes
         self.epsilon = 1e-4
-        self.void_negative_weight = void_negative_weight
         self.bottleneck_stride = bottleneck_stride
         self.patch_classification = patch_classification
-        self.void_class = void_class
-        self.argmax_only = argmax_only
-        self.tesnet = tesnet
-
-        if self.argmax_only:
-            self.gumbel_softmax_tau = nn.Parameter(torch.tensor(1.0), requires_grad=False)
 
         # prototype_activation_function could be 'log', 'linear',
         # or a generic function that converts distance to similarity score
@@ -76,26 +63,15 @@ class PPNet(nn.Module):
         Without domain specific knowledge we allocate the same number of
         prototypes for each class
         '''
-        if self.void_class:
-            assert self.num_prototypes % (self.num_classes - 1) == 0
+        assert self.num_prototypes % self.num_classes == 0
 
-            # a onehot indication matrix for each prototype's class identity
-            self.prototype_class_identity = torch.zeros(self.num_prototypes,
-                                                        self.num_classes)
+        # a onehot indication matrix for each prototype's class identity
+        self.prototype_class_identity = torch.zeros(self.num_prototypes,
+                                                    self.num_classes)
 
-            num_prototypes_per_class = self.num_prototypes // (self.num_classes - 1)
-            for i in range(1, self.num_classes):
-                self.prototype_class_identity[(i - 1) * num_prototypes_per_class:i * num_prototypes_per_class, i] = 1
-        else:
-            assert self.num_prototypes % self.num_classes == 0
-
-            # a onehot indication matrix for each prototype's class identity
-            self.prototype_class_identity = torch.zeros(self.num_prototypes,
-                                                        self.num_classes)
-
-            num_prototypes_per_class = self.num_prototypes // self.num_classes
-            for i in range(self.num_classes):
-                self.prototype_class_identity[i * num_prototypes_per_class:(i+1) * num_prototypes_per_class, i] = 1
+        num_prototypes_per_class = self.num_prototypes // self.num_classes
+        for i in range(self.num_classes):
+            self.prototype_class_identity[i * num_prototypes_per_class:(i+1) * num_prototypes_per_class, i] = 1
 
         self.num_prototypes_per_class = num_prototypes_per_class
         self.proto_layer_rf_info = proto_layer_rf_info
@@ -150,6 +126,11 @@ class PPNet(nn.Module):
                 nn.Conv2d(in_channels=first_add_on_layer_in_channels, 
                           out_channels=self.prototype_shape[1],
                           kernel_size=1),
+                nn.Sigmoid()
+            )
+        elif add_on_layers_type == 'deeplab_simple':
+            log('deeplab_simple add_on_layers')
+            self.add_on_layers = nn.Sequential(
                 nn.Sigmoid()
             )
         else:
@@ -254,100 +235,20 @@ class PPNet(nn.Module):
         logits, distances = self.forward_from_conv_features(conv_features)
         return logits, distances, conv_features
     
-    def run_last_layer(self, prototype_activations):
-        if hasattr(self, 'argmax_only') and self.argmax_only:
-            tau = self.gumbel_softmax_tau.item() if hasattr(self, 'gumbel_softmax_tau') else 0.5
-            new_prototype_activations = []
-
-            for cls_i in range(self.prototype_class_identity.shape[1]):
-                # TODO: Do it smart but fast
-                # is_prototype_cls = (self.prototype_class_identity[:, cls_i] == 1).unsqueeze(0).to(
-                    # prototype_activations.device
-                # )
-                # cls_ind = is_prototype_cls.nonzero()[:, 1]
-
-                # TODO: Un-hardcode "10"
-                cls_proto_activations = prototype_activations[:, cls_i * 10: (cls_i + 1) * 10]
-                # prototype_activations[:, cls_ind],
-
-                if self.training:
-                    # Sample soft categorical using reparametrization trick
-                    proto_argmax = F.gumbel_softmax(
-                        cls_proto_activations,
-                        tau=tau,
-                        hard=False
-                    )
-                else:
-                    max_val, _ = torch.max(cls_proto_activations, dim=-1)
-                    max_val = max_val.unsqueeze(-1)
-                    proto_argmax = cls_proto_activations == max_val
-
-                new_prototype_activations.append(cls_proto_activations * proto_argmax)
-
-            prototype_activations = torch.cat(new_prototype_activations, dim=-1)
-
-            return self.last_layer(prototype_activations)
-        else:
-            return self.last_layer(prototype_activations)
-
-    def _cosine_convolution(self, x):
-        x = F.normalize(x, p=2, dim=1)
-        now_prototype_vectors = F.normalize(self.prototype_vectors, p=2, dim=1)
-        distances = F.conv2d(input=x, weight=now_prototype_vectors)
-        distances = -distances
-        return distances
-
-    def _project2basis(self, x):
-        now_prototype_vectors = F.normalize(self.prototype_vectors, p=2, dim=1)
-        distances = F.conv2d(input=x, weight=now_prototype_vectors)
-        return distances
-
-    def tesnet_prototype_distances(self, conv_features):
-        cosine_distances = self._cosine_convolution(conv_features)
-        project_distances = self._project2basis(conv_features)
-
-        return project_distances, cosine_distances
-    
-    def global_min_pooling(self,distances):
-        min_distances = -F.max_pool2d(-distances,
-                                      kernel_size=(distances.size()[2],
-                                                   distances.size()[3]))
-        min_distances = min_distances.view(-1, self.num_prototypes)
-
-        return min_distances
-
-    def global_max_pooling(self,distances):
-        max_distances = F.max_pool2d(distances,
-                                     kernel_size=(distances.size()[2],
-                                                  distances.size()[3]))
-        max_distances = max_distances.view(-1, self.num_prototypes)
-
-        return max_distances
-
     def forward_from_conv_features(self, conv_features, return_distances=False):
-        if hasattr(self, 'tesnet') and self.tesnet:
-            project_similarities, distances = self.tesnet_prototype_distances(conv_features)
-        else:
-            distances = self._l2_convolution(conv_features)
-            project_similarities = None
-
         # distances.shape = (batch_size, num_prototypes, n_patches_cols, n_patches_rows)
+        distances = self._l2_convolution(conv_features)
 
         if hasattr(self, 'patch_classification') and self.patch_classification:
             # flatten to get predictions per patch
             batch_size, num_prototypes, n_patches_cols, n_patches_rows = distances.shape
 
-            if project_similarities is not None:
-                # shape: (batch_size, n_patches_cols, n_patches_rows, num_prototypes)
-                dist_view = project_similarities.permute(0, 2, 3, 1).contiguous()
-                prototype_activations = dist_view.view(-1, num_prototypes)
-            else:
-                # shape: (batch_size, n_patches_cols, n_patches_rows, num_prototypes)
-                dist_view = distances.permute(0, 2, 3, 1).contiguous()
-                dist_view = dist_view.view(-1, num_prototypes)
-                prototype_activations = self.distance_2_similarity(dist_view)
+            # shape: (batch_size, n_patches_cols, n_patches_rows, num_prototypes)
+            dist_view = distances.permute(0, 2, 3, 1).contiguous()
+            dist_view = dist_view.view(-1, num_prototypes)
+            prototype_activations = self.distance_2_similarity(dist_view)
 
-            logits = self.run_last_layer(prototype_activations)
+            logits = self.last_layer(prototype_activations)
 
             # shape: (batch_size, n_patches_cols, n_patches_rows, num_classes)
             logits = logits.reshape(batch_size, n_patches_cols, n_patches_rows, -1)
@@ -361,7 +262,7 @@ class PPNet(nn.Module):
             # min_distances.shape = (batch_size, num_prototypes)
             min_distances = min_distances.view(-1, self.num_prototypes)
             prototype_activations = self.distance_2_similarity(min_distances)
-            logits = self.run_last_layer(prototype_activations)
+            logits = self.last_layer(prototype_activations)
 
             if return_distances:
                 return logits, min_distances, distances
@@ -434,10 +335,6 @@ class PPNet(nn.Module):
         self.last_layer.weight.data.copy_(
             correct_class_connection * positive_one_weights_locations
             + incorrect_class_connection * negative_one_weights_locations)
-
-        if self.void_class:
-            # set weight of prototypes to void class
-            self.last_layer.weight.data[0] = self.void_negative_weight
 
     def _initialize_weights(self):
         for m in self.add_on_layers.modules():

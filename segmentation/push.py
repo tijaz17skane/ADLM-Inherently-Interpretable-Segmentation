@@ -4,18 +4,17 @@ import matplotlib.pyplot as plt
 import cv2
 import os
 import time
-
 from PIL import Image
 from tqdm import tqdm
-
+from torchvision import transforms
 from helpers import makedir, find_continuous_high_activation_crop
+
+from segmentation.dataset import PatchClassificationDataset
+
+to_tensor = transforms.ToTensor()
 
 
 # push each prototype to the nearest patch in the training set
-from segmentation.dataset import PatchClassificationDataset
-from segmentation.eval import to_tensor, to_normalized_tensor
-
-
 def push_prototypes(dataset: PatchClassificationDataset,
                     prototype_network_parallel,  # pytorch network with prototype_vectors
                     prototype_layer_stride=1,

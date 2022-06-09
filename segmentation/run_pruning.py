@@ -28,7 +28,6 @@ def run_pruning(config_name: str, experiment_name: str, k: int = 6, prune_thresh
     ppnet = torch.load(model_path)
     ppnet = ppnet.cuda()
     ppnet_multi = torch.nn.DataParallel(ppnet)
-    class_specific = True
 
     # load the data
     # TODO use configurable value for model_image_size here

@@ -31,20 +31,19 @@ from deeplab_features import torchvision_resnet_weight_key_to_deeplab2
 Trainer = gin.external_configurable(Trainer)
 
 
-@gin.configurable(allowlist=['model_image_size', 'random_seed',
-                             'early_stopping_patience_main', 'early_stopping_patience_last_layer',
-                             'start_checkpoint'])
+@gin.configurable(denylist=['config_path', 'experiment_name', 'neptune_experiment', 'pruned'])
 def train(
         config_path: str,
         experiment_name: str,
         neptune_experiment: Optional[str] = None,
         pruned: bool = False,
-        model_image_size: int = gin.REQUIRED,
-        random_seed: int = gin.REQUIRED,
-        early_stopping_patience_main: int = gin.REQUIRED,
-        early_stopping_patience_last_layer: int = gin.REQUIRED,
         start_checkpoint: str = '',
-        start_epoch: int = 0
+        random_seed: int = gin.REQUIRED,
+        early_stopping_patience_last_layer: int = gin.REQUIRED,
+        warmup_steps: int = gin.REQUIRED,
+        joint_steps: int = gin.REQUIRED,
+        warmup_batch_size: int = gin.REQUIRED,
+        joint_batch_size: int = gin.REQUIRED,
 ):
     seed_everything(random_seed)
 
@@ -53,23 +52,20 @@ def train(
     log(f'Starting experiment in "{results_dir}" from config {config_path}')
 
     last_checkpoint = os.path.join(results_dir, 'checkpoints', 'nopush_best.pth')
-    loaded = False
 
     if start_checkpoint:
         log(f'Loading checkpoint from {start_checkpoint}')
         ppnet = torch.load(start_checkpoint)
-        loaded = True
+        pre_loaded = True
     elif neptune_experiment is not None and os.path.exists(last_checkpoint):
         log(f'Loading last model from {last_checkpoint}')
         ppnet = torch.load(last_checkpoint)
-        loaded = True
+        pre_loaded = True
     else:
-        ppnet = construct_PPNet(img_size=model_image_size)
+        pre_loaded = False
+        ppnet = construct_PPNet()
 
-    if not loaded:
-        # uncomment to load model pre-trained on COCO
-        # state_dict = torch.load('/home/sacha/proto-segmentation/deeplab_pytorch/data/models/coco/deeplabv1_resnet101/caffemodel/deeplabv1_resnet101-coco.pth')
-
+    if not pre_loaded:
         # load weights from Resnet pretrained on ImageNet
         resnet_state_dict = torchvision.models.resnet101(pretrained=True).state_dict()
         new_state_dict = {}
@@ -85,10 +81,6 @@ def train(
         assert len(load_result.unexpected_keys) == 0
 
         log(f'Loaded {len(new_state_dict)} weights from pretrained ResNet101')
-
-    data_module = PatchClassificationDataModule(
-        model_image_size=model_image_size,
-    )
 
     logs_dir = os.path.join(results_dir, 'logs')
     os.makedirs(os.path.join(logs_dir, 'tb'), exist_ok=True)
@@ -117,7 +109,7 @@ def train(
             else:
                 neptune_logger = NeptuneLogger(
                     project="mikolajsacha/protobased-research",
-                    tags=[config_path, 'patch_classification', 'protopnet'],
+                    tags=[config_path, 'segmentation', 'protopnet'],
                     name=experiment_name
                 )
                 loggers.append(neptune_logger)
@@ -128,31 +120,32 @@ def train(
 
         shutil.copy(f'segmentation/configs/{config_path}.gin', os.path.join(results_dir, 'config.gin'))
 
-        log('MAIN TRAINING')
-        callbacks = [
-            EarlyStopping(monitor='val/accuracy', patience=early_stopping_patience_main, mode='max')
-        ]
+        if warmup_steps > 0:
+            data_module = PatchClassificationDataModule(batch_size=warmup_batch_size)
+            module = PatchClassificationModule(
+                model_dir=results_dir,
+                ppnet=ppnet,
+                training_phase=0,
+                max_steps=warmup_steps
+            )
+            trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
+                              min_steps=1, max_steps=warmup_steps)
+            trainer.fit(model=module, datamodule=data_module)
+            current_epoch = trainer.current_epoch
+        else:
+            current_epoch = -1
 
+        data_module = PatchClassificationDataModule(batch_size=joint_batch_size)
         module = PatchClassificationModule(
             model_dir=results_dir,
-            model_image_size=model_image_size,
             ppnet=ppnet,
-            last_layer_only=False
+            training_phase=1,
+            max_steps=joint_steps
         )
-
-        trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
-                          enable_progress_bar=False)
-        if start_epoch != 0:
-            trainer.fit_loop.current_epoch = start_epoch
-
-        # TODO temporary
-        # trainer.fit(model=module, datamodule=data_module)
-        
-        best_checkpoint = os.path.join(results_dir, 'checkpoints', 'nopush_best.pth')
-        log(f'Loading best model from {best_checkpoint}')
-        ppnet = torch.load(best_checkpoint)
-
-        ppnet = ppnet.cuda()
+        trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
+                          min_steps=1, max_steps=joint_steps)
+        trainer.fit_loop.current_epoch = current_epoch + 1
+        trainer.fit(model=module, datamodule=data_module)
 
         log('SAVING PROTOTYPES')
         module.eval()
@@ -161,9 +154,7 @@ def train(
         push_dataset = PatchClassificationDataset(
             split_key='train',
             is_eval=True,
-            model_image_size=data_module.model_image_size,
-            push_prototypes=True,
-            length_multiplier=1
+            push_prototypes=True
         )
 
         push_prototypes(
@@ -171,7 +162,7 @@ def train(
             prototype_network_parallel=ppnet,
             prototype_layer_stride=1,
             root_dir_for_saving_prototypes=module.prototypes_dir,
-            epoch_number=module.current_epoch,
+            epoch_number=trainer.current_epoch,
             prototype_img_filename_prefix='prototype-img',
             prototype_self_act_filename_prefix='prototype-self-act',
             proto_bound_boxes_filename_prefix='bb',
@@ -199,28 +190,20 @@ def train(
             neptune_run['config'] = json_gin_config
 
     log('LAST LAYER FINE-TUNING')
+    torch.set_grad_enabled(True)
     callbacks = [
         EarlyStopping(monitor='val/accuracy', patience=early_stopping_patience_last_layer, mode='max')
     ]
-
+    data_module = PatchClassificationDataModule(batch_size=warmup_batch_size)
     module = PatchClassificationModule(
         model_dir=os.path.join(results_dir, 'pruned') if pruned else results_dir,
-        model_image_size=model_image_size,
         ppnet=ppnet,
-        last_layer_only=True
+        training_phase=2
     )
-
-    if trainer is not None:
-        current_epoch = trainer.current_epoch
-    else:
-        current_epoch = start_epoch
-
+    current_epoch = trainer.current_epoch
     trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
                       enable_progress_bar=False)
-    if start_epoch != 0:
-        trainer.fit_loop.current_epoch = start_epoch
-    else:
-        trainer.fit_loop.current_epoch = current_epoch + 1
+    trainer.fit_loop.current_epoch = current_epoch + 1
     trainer.fit(model=module, datamodule=data_module)
 
 
@@ -229,7 +212,6 @@ def load_config_and_train(
         experiment_name: str,
         neptune_experiment: Optional[str] = None,
         pruned: bool = False,
-        start_epoch: int = 0,
         start_checkpoint: str = ''
 ):
     gin.parse_config_file(f'segmentation/configs/{config_path}.gin')
@@ -237,7 +219,6 @@ def load_config_and_train(
         config_path=config_path,
         experiment_name=experiment_name,
         pruned=pruned,
-        start_epoch=start_epoch,
         neptune_experiment=neptune_experiment,
         start_checkpoint=start_checkpoint
     )

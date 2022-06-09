@@ -111,33 +111,3 @@ CITYSCAPES_19_EVAL_CATEGORIES = {
     27: 19,
     28: 0,
 }
-
-
-# Taken from deeplabv3 trained on COCO
-SUN_MEAN = [0.485, 0.456, 0.406]
-SUN_STD = [0.229, 0.224, 0.225]
-
-# we follow https://rgbd.cs.princeton.edu/supp.pdf and use only 37 selected categories, all others are 'void'
-SUN_CATEGORIES = [
-    'void', 'wall', 'floor', 'cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window', 'bookshelf', 'picture',
-    'counter', 'blinds', 'desk', 'shelves', 'curtain', 'dresser', 'pillow', 'mirror', 'floor_mat',
-    'clothes', 'ceiling', 'books', 'fridge', 'tv', 'paper', 'towel', 'shower_curtain', 'box', 'whiteboard',
-    'person', 'nightstand', 'toilet', 'sink', 'lamp', 'bathtub', 'bag'
-]
-
-SUN_LABEL_2_ID = {k: i for i, k in enumerate(SUN_CATEGORIES)}
-
-# some categories in the dataset have typos/different spelling
-# this is an attempt to unify them
-sun_convert_categories = {
-    'night_stand': 'nightstand',
-    'night stand': 'nightstand',
-    'blind': 'blinds',
-    'shower curtain': 'shower_curtain',
-    'showercurtain': 'shower_curtain',
-    'floormat': 'floor_mat',
-    'floor mat': 'floor_mat',
-    'floormats': 'floor_mat',
-    'floor_mats': 'floor_mat',
-    'floor mats': 'floor_mat'
-}

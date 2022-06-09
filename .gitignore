@@ -166,3 +166,8 @@ results/
 
 # notebooks (maybe upload later)
 *.ipynb
+
+# pytorch wieghts and caffe models
+*.pth
+*.caffemodel
+pretrained_models

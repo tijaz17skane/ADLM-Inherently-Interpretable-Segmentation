@@ -16,10 +16,6 @@ export TRAIN_PUSH_DIR='/shared/sets/datasets/cityscapes'
 export TEST_DIR='/shared/sets/datasets/cityscapes'
 
 # set it if using neptune
-# export NEPTUNE_API_TOKEN=''
-
-# load all images to memory at once - makes training faster but uses lots of RAM
-export LOAD_IMAGES_RAM=1
-
+export NEPTUNE_API_TOKEN=''
 
 conda activate proto-seg

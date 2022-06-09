@@ -152,8 +152,6 @@ def last_only(model, log=print):
     for p in model.last_layer.parameters():
         p.requires_grad = True
 
-    log('\tlast layer')
-
 
 def warm_only(model, log=print):
     aspp_params = [
@@ -179,8 +177,6 @@ def warm_only(model, log=print):
     for p in aspp_params:
         p.requires_grad = True
 
-    log('\twarm')
-
 
 def joint(model, log=print):
     if hasattr(model, 'module'):
@@ -192,5 +188,3 @@ def joint(model, log=print):
     model.prototype_vectors.requires_grad = True
     for p in model.last_layer.parameters():
         p.requires_grad = True
-
-    log('\tjoint')

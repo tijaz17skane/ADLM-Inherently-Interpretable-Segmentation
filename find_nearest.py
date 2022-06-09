@@ -12,8 +12,16 @@ from tqdm import tqdm
 from PIL import Image
 
 from helpers import makedir, find_high_activation_crop
+from torchvision import transforms
+
+from segmentation.constants import CITYSCAPES_MEAN, CITYSCAPES_STD
 from segmentation.dataset import resize_label
-from segmentation.eval import to_normalized_tensor
+
+
+to_normalized_tensor = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(CITYSCAPES_MEAN, CITYSCAPES_STD)
+])
 
 
 def imsave_with_bbox(fname, img_rgb, bbox_height_start, bbox_height_end,
