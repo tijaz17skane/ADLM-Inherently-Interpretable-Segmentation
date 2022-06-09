@@ -16,10 +16,10 @@ train.random_seed = 20220227
 train.early_stopping_patience_last_layer = 20
 train.start_checkpoint = ''
 
-train.warmup_steps = 5 # TODo 100000
-train.joint_steps = 10 # 150000
-train.warmup_batch_size = 16 #  32
-train.joint_batch_size = 2 # 4
+train.warmup_steps = 100000
+train.joint_steps = 150000
+train.warmup_batch_size = 32
+train.joint_batch_size = 4
 
 PatchClassificationDataset.mean = [0.485, 0.456, 0.406]
 PatchClassificationDataset.std = [0.229, 0.224, 0.225]
@@ -27,7 +27,7 @@ PatchClassificationDataset.image_margin_size = 512
 PatchClassificationDataset.window_size = (513, 513)
 PatchClassificationDataset.only_19_from_cityscapes = True
 
-PatchClassificationDataModule.dataloader_n_jobs = 8  # TODO 32
+PatchClassificationDataModule.dataloader_n_jobs = 32
 
 PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_l1 = 1e-4

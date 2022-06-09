@@ -7,6 +7,8 @@ import time
 from PIL import Image
 from tqdm import tqdm
 from torchvision import transforms
+
+from find_nearest import to_normalized_tensor
 from helpers import makedir, find_continuous_high_activation_crop
 
 from segmentation.dataset import PatchClassificationDataset
@@ -97,8 +99,6 @@ def push_prototypes(dataset: PatchClassificationDataset,
         img = img.crop((margin_size, margin_size, img.width - margin_size, img.height - margin_size))
 
         gt_ann = np.load(os.path.join(dataset.annotations_dir, img_id + '.npy'))
-        if dataset.transpose_ann:
-            gt_ann = gt_ann.T
 
         with torch.no_grad():
             update_prototypes_on_image(dataset,
@@ -115,8 +115,7 @@ def push_prototypes(dataset: PatchClassificationDataset,
                                        dir_for_saving_prototypes=proto_epoch_dir,
                                        prototype_img_filename_prefix=prototype_img_filename_prefix,
                                        prototype_self_act_filename_prefix=prototype_self_act_filename_prefix,
-                                       prototype_activation_function_in_numpy=prototype_activation_function_in_numpy,
-                                       patch_size=dataset.patch_size)
+                                       prototype_activation_function_in_numpy=prototype_activation_function_in_numpy)
 
     if proto_epoch_dir != None and proto_bound_boxes_filename_prefix != None:
         np.save(os.path.join(proto_epoch_dir,

@@ -148,6 +148,7 @@ def train(
         trainer.fit(model=module, datamodule=data_module)
 
         log('SAVING PROTOTYPES')
+        ppnet = ppnet.cuda()
         module.eval()
         torch.set_grad_enabled(False)
 
