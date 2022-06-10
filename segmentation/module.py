@@ -28,6 +28,8 @@ def reset_metrics() -> Dict:
         'n_batches': 0,
         'n_patches': 0,
         'cross_entropy': 0,
+        'cluster_cost': 0,
+        'separation': 0,
         'loss': 0,
     }
 
@@ -380,7 +382,7 @@ class PatchClassificationModule(LightningModule):
         metrics = self.metrics[split_key]
         n_batches = metrics['n_batches']
 
-        for key in ['loss', 'cross_entropy']:
+        for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         self.log(f'{split_key}/accuracy', metrics['n_correct'] / metrics['n_patches'])
