@@ -1,4 +1,4 @@
-# Cityscapes with deeplabv2 - with cluster and separation losses
+# Cityscapes with deeplabv2 - only cross entropy loss
 
 Trainer.gpus = 1
 
@@ -31,8 +31,8 @@ PatchClassificationDataset.only_19_from_cityscapes = True
 PatchClassificationDataModule.dataloader_n_jobs = 32
 
 PatchClassificationModule.loss_weight_crs_ent = 1.0
-PatchClassificationModule.loss_weight_clst = 0.8
-PatchClassificationModule.loss_weight_sep = -0.08
+PatchClassificationModule.loss_weight_clst = 0.0
+PatchClassificationModule.loss_weight_sep = 0.0
 PatchClassificationModule.loss_weight_l1 = 1e-4
 
 PatchClassificationModule.joint_optimizer_lr_features = 1e-5

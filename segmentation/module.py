@@ -44,6 +44,8 @@ class PatchClassificationModule(LightningModule):
             prototype_rebalancing: Optional[int] = None,
             poly_lr_power: float = gin.REQUIRED,
             loss_weight_crs_ent: float = gin.REQUIRED,
+            loss_weight_clst: float = gin.REQUIRED,
+            loss_weight_sep: float = gin.REQUIRED,
             loss_weight_l1: float = gin.REQUIRED,
             joint_optimizer_lr_features: float = gin.REQUIRED,
             joint_optimizer_lr_add_on_layers: float = gin.REQUIRED,
@@ -67,6 +69,8 @@ class PatchClassificationModule(LightningModule):
         self.max_steps = max_steps
         self.poly_lr_power = poly_lr_power
         self.loss_weight_crs_ent = loss_weight_crs_ent
+        self.loss_weight_clst = loss_weight_clst
+        self.loss_weight_sep = loss_weight_sep
         self.loss_weight_l1 = loss_weight_l1
         self.joint_optimizer_lr_features = joint_optimizer_lr_features
         self.joint_optimizer_lr_add_on_layers = joint_optimizer_lr_add_on_layers
@@ -145,8 +149,9 @@ class PatchClassificationModule(LightningModule):
         # we flatten target/output - classification is done per patch
         output = output.reshape(-1, output.shape[-1])
         target = target.flatten()
-        patch_distances = patch_distances.permute(1, 2, 3, 0)
-        patch_distances = patch_distances.reshape(-1, patch_distances.shape[0])
+
+        patch_distances = patch_distances.permute(0, 2, 3, 1)
+        patch_distances = patch_distances.reshape(-1, patch_distances.shape[-1])  # (n_pixels x n_protos)
 
         if self.ignore_void_class:
             # do not predict label for void class (0)
@@ -160,6 +165,27 @@ class PatchClassificationModule(LightningModule):
             target.long(),
         )
 
+        max_dist = (self.ppnet.prototype_shape[1]
+                    * self.ppnet.prototype_shape[2]
+                    * self.ppnet.prototype_shape[3])
+
+        # calculate cluster cost
+        prototypes_of_correct_class = torch.t(torch.index_select(
+            self.ppnet.prototype_class_identity.to(self.device),
+            dim=-1,
+            index=target.long()
+        )).to(self.device)
+
+        inverted_distances, _ = torch.max((max_dist - patch_distances) * prototypes_of_correct_class, dim=1)
+        cluster_cost = torch.mean(max_dist - inverted_distances)
+
+        # calculate separation cost
+        prototypes_of_wrong_class = 1 - prototypes_of_correct_class
+        inverted_distances_to_nontarget_prototypes, _ = \
+            torch.max((max_dist - patch_distances) * prototypes_of_wrong_class, dim=1)
+
+        separation = torch.mean(max_dist - inverted_distances_to_nontarget_prototypes)
+
         output_sigmoid = torch.softmax(output, dim=-1)
         output_class = torch.argmax(output_sigmoid, dim=-1)
         is_correct = output_class == target
@@ -167,11 +193,16 @@ class PatchClassificationModule(LightningModule):
         l1_mask = 1 - torch.t(self.ppnet.prototype_class_identity).to(self.device)
         l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
 
-        loss = self.loss_weight_crs_ent * cross_entropy + self.loss_weight_l1 * l1
+        loss = (self.loss_weight_crs_ent * cross_entropy +
+                self.loss_weight_clst * cluster_cost +
+                self.loss_weight_sep * separation +
+                self.loss_weight_l1 * l1)
         loss_value = loss.item()
 
         metrics['loss'] += loss_value
         metrics['cross_entropy'] += cross_entropy.item()
+        metrics['cluster_cost'] += cluster_cost.item()
+        metrics['separation'] += separation.item()
         metrics['n_correct'] += torch.sum(is_correct)
         metrics['n_patches'] += output.shape[0]
         metrics['n_batches'] += 1
@@ -202,6 +233,7 @@ class PatchClassificationModule(LightningModule):
                 with torch.no_grad():
                     output_class_oh = F.one_hot(output_class, num_classes=self.ppnet.num_classes)
                     output_class_mask = torch.matmul(output_class_oh.float(), self.ppnet.prototype_class_identity.T)
+                    # [n_pixels x n_protos]
                     pred_cls_patch_distances = patch_distances + (1 - output_class_mask) * 10e6
                     nearest_patch_prototypes = torch.argmin(pred_cls_patch_distances, dim=1).flatten()
 
