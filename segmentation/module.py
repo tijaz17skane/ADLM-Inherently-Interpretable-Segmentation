@@ -336,7 +336,7 @@ class PatchClassificationModule(LightningModule):
             torch.save(obj=self.ppnet, f=os.path.join(self.checkpoints_dir, f'{stage_key}_best.pth'))
 
         if self.prototype_rebalancing is not None and self.trainer.global_step >= self.prototype_rebalancing:
-            if self.rebalance_epoch_counter % self.rebalance_epoch_counter == 0:
+            if self.rebalance_epoch_counter % self.prototype_rebalance_every == 0:
                 self.rebalance_prototypes()
                 self.rebalancing_stats = {
                     'proto_class_patches_total': Counter(),
