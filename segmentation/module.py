@@ -269,6 +269,17 @@ class PatchClassificationModule(LightningModule):
         proto_nums = np.asarray(proto_nums)
         frac_top_proto = np.asarray(frac_top_proto)
 
+        # save statistics about prototype balance for debugging purposes
+        # this can be removed/commented out if it takes too much disk space
+        os.makedirs(f'{self.checkpoints_dir}/prototype_rebalancing', exist_ok=True)
+        np_total_cls_patches = np.asarray([self.rebalancing_stats['proto_class_patches_total'][i]
+                                           for i in range(len(self.cls_prototypes))], dtype=np.unit64)
+        np_prototypes_n_nearest = np.asarray([self.rebalancing_stats['patches_nearest_prototypes'][i]
+                                              for i in range(len(self.cls_prototypes))], dtype=np.unit64)
+        np.savez(f'{self.checkpoints_dir}/rebalancing/{self.training_phase}_{self.trainer.global_step}',
+                 total_patches=np_total_cls_patches, nearest_patches=np_prototypes_n_nearest,
+                 class_saturation=cls_proto_saturation)
+
         cls_proto_saturation = np.asarray(cls_proto_saturation)
         top_classes_by_proto_saturation = np.argsort(-cls_proto_saturation)
 
@@ -292,8 +303,9 @@ class PatchClassificationModule(LightningModule):
                     cls_proto_saturation[saturated_class] < self.prototype_rebalancing_threshold):
                 break
 
-            log(f'Moving prototype {proto_num} ({(frac_top_proto[proto_ind]*100):.4f}%) '
-                f'from class {self.proto2cls[proto_num]} to class {saturated_class}')
+            log(f'Moving prototype {proto_num} ({(frac_top_proto[proto_ind] * 100):.4f}%) '
+                f'from class {self.proto2cls[proto_num]} to class {saturated_class} '
+                f'(saturation: {cls_proto_saturation[saturated_class]:.4f}%)')
             any_moved = True
 
             if self.prototype_initialization_method == 'random':
