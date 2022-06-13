@@ -17,7 +17,7 @@ train.early_stopping_patience_last_layer = 20
 train.start_checkpoint = ''
 
 train.warmup_steps = 25000
-train.joint_steps = 50000
+train.joint_steps = 100000
 train.warmup_batch_size = 32
 train.joint_batch_size = 4
 train.prototype_rebalancing_start = 920 # ~10 epochs with batch size 32
@@ -50,7 +50,7 @@ PatchClassificationModule.ignore_void_class = True
 PatchClassificationModule.poly_lr_power = 0.9
 PatchClassificationModule.prototype_rebalancing_threshold = 0.01
 PatchClassificationModule.prototype_initialization_method = 'mean'
-PatchClassificationModule.prototype_rebalance_every = 2
+PatchClassificationModule.prototype_rebalance_every = 4
 
 PPNet.bottleneck_stride = 1
 PPNet.patch_classification = True
