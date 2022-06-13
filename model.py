@@ -142,9 +142,7 @@ class PPNet(nn.Module):
                 nn.Sigmoid()
             )
 
-        # initialize with uniform in interval [-2, 2] (we take sigmoid after it)
-        self.prototype_vectors = nn.Parameter((torch.rand(self.prototype_shape) * 4) - 2,
-                                              requires_grad=True)
+        self.prototype_vectors = nn.Parameter(torch.rand(self.prototype_shape), requires_grad=True)
 
         # do not make this just a tensor,
         # since it will not be moved automatically to gpu
@@ -198,15 +196,13 @@ class PPNet(nn.Module):
         x2 = x ** 2
         x2_patch_sum = F.conv2d(input=x2, weight=self.ones)
 
-        prototype_vectors = torch.sigmoid(self.prototype_vectors)
-
-        p2 = prototype_vectors ** 2
+        p2 = self.prototype_vectors ** 2
         p2 = torch.sum(p2, dim=(1, 2, 3))
         # p2 is a vector of shape (num_prototypes,)
         # then we reshape it to (num_prototypes, 1, 1)
         p2_reshape = p2.view(-1, 1, 1)
 
-        xp = F.conv2d(input=x, weight=prototype_vectors)
+        xp = F.conv2d(input=x, weight=self.prototype_vectors)
         intermediate_result = - 2 * xp + p2_reshape  # use broadcast
         # x2_patch_sum and intermediate_result are of the same shape
         distances = F.relu(x2_patch_sum + intermediate_result)

@@ -188,8 +188,7 @@ class PatchClassificationModule(LightningModule):
 
         separation = torch.mean(max_dist - inverted_distances_to_nontarget_prototypes)
 
-        output_sigmoid = torch.softmax(output, dim=-1)
-        output_class = torch.argmax(output_sigmoid, dim=-1)
+        output_class = torch.argmax(output, dim=-1)
         is_correct = output_class == target
 
         l1_mask = 1 - torch.t(self.ppnet.prototype_class_identity).to(self.device)
@@ -404,7 +403,7 @@ class PatchClassificationModule(LightningModule):
         return self._epoch_end('train')
 
     def validation_epoch_end(self, step_outputs):
-        p = torch.sigmoid(self.ppnet.prototype_vectors).view(self.ppnet.num_prototypes, -1).cpu()
+        p = self.ppnet.prototype_vectors.view(self.ppnet.num_prototypes, -1).cpu()
         with torch.no_grad():
             p_avg_pair_dist = torch.mean(list_of_distances(p, p))
         self.log('p dist pair', p_avg_pair_dist.item())

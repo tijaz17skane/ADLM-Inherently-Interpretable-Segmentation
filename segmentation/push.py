@@ -128,14 +128,7 @@ def push_prototypes(dataset: PatchClassificationDataset,
     prototype_update = np.reshape(global_min_fmap_patches,
                                   tuple(prototype_shape))
 
-    # we save prototypes before sigmoid in the model,
-    # but we get features after sigmoid
-    # so to save features as prototypes we need to 'undo' the sigmoid
-    def reverse_sigmoid(x):
-        return -np.log(1 / x - 1)
-
-    prototype_network_parallel.prototype_vectors.data.copy_(torch.tensor(reverse_sigmoid(prototype_update),
-                                                                         dtype=torch.float32).cuda())
+    prototype_network_parallel.prototype_vectors.data.copy_(torch.tensor(prototype_update, dtype=torch.float32).cuda())
     # ppnet.cuda()
     end = time.time()
     log('\tpush time: \t{0}'.format(end - start))
