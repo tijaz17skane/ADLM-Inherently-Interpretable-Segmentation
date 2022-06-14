@@ -272,9 +272,9 @@ class PatchClassificationModule(LightningModule):
         # this can be removed/commented out if it takes too much disk space
         os.makedirs(f'{self.checkpoints_dir}/prototype_rebalancing', exist_ok=True)
         np_total_cls_patches = np.asarray([self.rebalancing_stats['proto_class_patches_total'][i]
-                                           for i in range(len(self.cls_prototypes))], dtype=np.uint64)
+                                           for i in range(self.ppnet.num_prototypes)], dtype=np.uint64)
         np_prototypes_n_nearest = np.asarray([self.rebalancing_stats['patches_nearest_prototypes'][i]
-                                              for i in range(len(self.cls_prototypes))], dtype=np.uint64)
+                                              for i in range(self.ppnet.num_prototypes)], dtype=np.uint64)
         np.savez(f'{self.checkpoints_dir}/prototype_rebalancing/{self.training_phase}_{self.trainer.global_step}',
                  total_patches=np_total_cls_patches, nearest_patches=np_prototypes_n_nearest,
                  class_saturation=cls_proto_saturation)
