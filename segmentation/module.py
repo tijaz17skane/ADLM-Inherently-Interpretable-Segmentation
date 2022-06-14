@@ -275,7 +275,7 @@ class PatchClassificationModule(LightningModule):
                                            for i in range(len(self.cls_prototypes))], dtype=np.uint64)
         np_prototypes_n_nearest = np.asarray([self.rebalancing_stats['patches_nearest_prototypes'][i]
                                               for i in range(len(self.cls_prototypes))], dtype=np.uint64)
-        np.savez(f'{self.checkpoints_dir}/rebalancing/{self.training_phase}_{self.trainer.global_step}',
+        np.savez(f'{self.checkpoints_dir}/prototype_rebalancing/{self.training_phase}_{self.trainer.global_step}',
                  total_patches=np_total_cls_patches, nearest_patches=np_prototypes_n_nearest,
                  class_saturation=cls_proto_saturation)
 
