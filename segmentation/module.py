@@ -30,6 +30,7 @@ def reset_metrics() -> Dict:
         'cross_entropy': 0,
         'cluster_cost': 0,
         'separation': 0,
+        'proto_dist_cost': 0,
         'loss': 0,
     }
 
@@ -48,6 +49,7 @@ class PatchClassificationModule(LightningModule):
             loss_weight_crs_ent: float = gin.REQUIRED,
             loss_weight_clst: float = gin.REQUIRED,
             loss_weight_sep: float = gin.REQUIRED,
+            loss_weight_proto_dist: float = 0.0,
             loss_weight_l1: float = gin.REQUIRED,
             joint_optimizer_lr_features: float = gin.REQUIRED,
             joint_optimizer_lr_add_on_layers: float = gin.REQUIRED,
@@ -73,6 +75,7 @@ class PatchClassificationModule(LightningModule):
         self.loss_weight_crs_ent = loss_weight_crs_ent
         self.loss_weight_clst = loss_weight_clst
         self.loss_weight_sep = loss_weight_sep
+        self.loss_weight_proto_dist = loss_weight_proto_dist
         self.loss_weight_l1 = loss_weight_l1
         self.joint_optimizer_lr_features = joint_optimizer_lr_features
         self.joint_optimizer_lr_add_on_layers = joint_optimizer_lr_add_on_layers
@@ -139,6 +142,7 @@ class PatchClassificationModule(LightningModule):
             self.start_step = self.trainer.global_step
 
         self.ppnet.features.freeze_bn()
+        prototype_class_identity = self.ppnet.prototype_class_identity.to(self.device)
 
         metrics = self.metrics[split_key]
 
@@ -173,7 +177,7 @@ class PatchClassificationModule(LightningModule):
 
         # calculate cluster cost
         prototypes_of_correct_class = torch.t(torch.index_select(
-            self.ppnet.prototype_class_identity.to(self.device),
+            prototype_class_identity,
             dim=-1,
             index=target.long()
         )).to(self.device)
@@ -191,19 +195,46 @@ class PatchClassificationModule(LightningModule):
         output_class = torch.argmax(output, dim=-1)
         is_correct = output_class == target
 
-        l1_mask = 1 - torch.t(self.ppnet.prototype_class_identity).to(self.device)
+        l1_mask = 1 - torch.t(prototype_class_identity)
         l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
+
+        # calculate 'prototype distance cost' - we want to punish near prototypes within same class
+        # prototype_class_identity.shape = (num_prototypes, self.num_classes)
+        # prototype_vectors.shape = (num_prototypes, hidden)
+
+        prototype_vectors = torch.reshape(self.ppnet.prototype_vectors, (self.ppnet.num_prototypes, -1))
+
+        proto_dist_cost = []
+
+        for cls_i in range(self.ppnet.num_classes):
+            cls_prototypes = prototype_vectors[self.cls_prototypes[cls_i]]
+            pair_distances = torch.cdist(cls_prototypes, cls_prototypes)
+
+            # mask duplicate pairs and distances of a prototype to itself
+            mask_value = 10e6
+            pair_distances = pair_distances + torch.triu(torch.full_like(pair_distances, fill_value=mask_value))
+            pair_distances = pair_distances.flatten()
+            pair_distances = pair_distances[pair_distances < mask_value]
+
+            pairwise_loss = torch.mean(torch.exp(-pair_distances))
+            proto_dist_cost.append(pairwise_loss)
+
+        proto_dist_cost = torch.mean(torch.stack(proto_dist_cost))
 
         loss = (self.loss_weight_crs_ent * cross_entropy +
                 self.loss_weight_clst * cluster_cost +
                 self.loss_weight_sep * separation +
+                self.loss_weight_proto_dist * proto_dist_cost +
                 self.loss_weight_l1 * l1)
         loss_value = loss.item()
+
+        print(loss_value, cross_entropy.item(), proto_dist_cost.item())
 
         metrics['loss'] += loss_value
         metrics['cross_entropy'] += cross_entropy.item()
         metrics['cluster_cost'] += cluster_cost.item()
         metrics['separation'] += separation.item()
+        metrics['proto_dist_cost'] += proto_dist_cost.item()
         metrics['n_correct'] += torch.sum(is_correct)
         metrics['n_patches'] += output.shape[0]
         metrics['n_batches'] += 1
@@ -393,7 +424,7 @@ class PatchClassificationModule(LightningModule):
         metrics = self.metrics[split_key]
         n_batches = metrics['n_batches']
 
-        for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation']:
+        for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation', 'proto_dist_cost']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         self.log(f'{split_key}/accuracy', metrics['n_correct'] / metrics['n_patches'])
