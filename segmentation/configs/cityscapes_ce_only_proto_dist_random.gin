@@ -50,7 +50,7 @@ PatchClassificationModule.last_layer_optimizer_lr = 1e-5
 PatchClassificationModule.ignore_void_class = True
 PatchClassificationModule.poly_lr_power = 0.9
 PatchClassificationModule.prototype_rebalancing_threshold = 0.01
-PatchClassificationModule.prototype_initialization_method = 'mean'
+PatchClassificationModule.prototype_initialization_method = 'random'
 PatchClassificationModule.prototype_rebalance_every = 4
 
 PPNet.bottleneck_stride = 1

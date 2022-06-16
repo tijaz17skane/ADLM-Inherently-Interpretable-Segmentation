@@ -216,7 +216,7 @@ class PatchClassificationModule(LightningModule):
             pair_distances = pair_distances.flatten()
             pair_distances = pair_distances[pair_distances < mask_value]
 
-            pairwise_loss = torch.mean(torch.exp(-pair_distances))
+            pairwise_loss = torch.max(torch.exp(-pair_distances))
             proto_dist_cost.append(pairwise_loss)
 
         proto_dist_cost = torch.mean(torch.stack(proto_dist_cost))
@@ -227,8 +227,6 @@ class PatchClassificationModule(LightningModule):
                 self.loss_weight_proto_dist * proto_dist_cost +
                 self.loss_weight_l1 * l1)
         loss_value = loss.item()
-
-        print(loss_value, cross_entropy.item(), proto_dist_cost.item())
 
         metrics['loss'] += loss_value
         metrics['cross_entropy'] += cross_entropy.item()
