@@ -48,7 +48,7 @@ def prune_prototypes(dataset,
     class_of_prototypes_to_prune = \
         torch.argmax(
             prototype_network_parallel.module.prototype_class_identity[prototypes_to_prune],
-            dim=1).cpu().numpy().reshape(-1, 1)
+            dim=1).cpu().detach().numpy().reshape(-1, 1)
     prototypes_to_prune_np = np.array(prototypes_to_prune).reshape(-1, 1)
     prune_info = np.hstack((prototypes_to_prune_np, class_of_prototypes_to_prune))
     makedir(os.path.join(original_model_dir, 'pruned_prototypes_epoch{}_k{}_pt{}'.format(epoch_number,
