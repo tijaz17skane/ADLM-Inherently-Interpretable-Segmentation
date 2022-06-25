@@ -19,8 +19,12 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4):
     log(f'Loading model from {model_path}')
     config_path = os.path.join(model_path, 'config.gin')
     gin.parse_config_file(config_path)
+    
+    if training_phase == 'pruned':
+       checkpoint_path = os.path.join(model_path, 'pruned/pruned.pth')
+    else:
+       checkpoint_path = os.path.join(model_path, f'checkpoints/{training_phase}_last.pth')
 
-    checkpoint_path = os.path.join(model_path, f'checkpoints/{training_phase}_last.pth')
     ppnet = torch.load(checkpoint_path)  # , map_location=torch.device('cpu'))
     ppnet = ppnet.cuda()
     ppnet.eval()

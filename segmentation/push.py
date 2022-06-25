@@ -1,3 +1,5 @@
+import json
+
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -127,9 +129,18 @@ def push_prototypes(dataset: PatchClassificationDataset,
     log('\tExecuting push ...')
     prototype_update = np.reshape(global_min_fmap_patches,
                                   tuple(prototype_shape))
-
     prototype_network_parallel.prototype_vectors.data.copy_(torch.tensor(prototype_update, dtype=torch.float32).cuda())
-    # ppnet.cuda()
+
+    # de-duplicate prototypes
+    _, unique_index = np.unique(prototype_update, axis=0, return_index=True)
+    duplicate_idx = [i for i in range(prototype_network_parallel.num_prototypes) if i not in unique_index]
+
+    log(f'Removing {len(duplicate_idx)} duplicate prototypes.')
+    prototype_network_parallel.prune_prototypes(duplicate_idx)
+    os.makedirs(root_dir_for_saving_prototypes, exist_ok=True)
+    with open(os.path.join(root_dir_for_saving_prototypes, 'unique_prototypes.json'), 'w') as fp:
+        json.dump(list(unique_index), fp)
+
     end = time.time()
     log('\tpush time: \t{0}'.format(end - start))
 
