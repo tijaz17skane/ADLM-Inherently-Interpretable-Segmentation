@@ -208,6 +208,8 @@ class PatchClassificationModule(LightningModule):
 
         for cls_i in range(self.ppnet.num_classes):
             cls_prototypes = prototype_vectors[self.cls_prototypes[cls_i]]
+            if len(cls_prototypes) <= 1:
+                continue
             pair_distances = torch.cdist(cls_prototypes, cls_prototypes)
 
             # mask duplicate pairs and distances of a prototype to itself

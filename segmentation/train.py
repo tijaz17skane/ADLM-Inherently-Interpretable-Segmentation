@@ -44,7 +44,7 @@ def train(
         joint_steps: int = gin.REQUIRED,
         warmup_batch_size: int = gin.REQUIRED,
         joint_batch_size: int = gin.REQUIRED,
-        prototype_rebalancing_start: int = Optional[gin.REQUIRED],
+        prototype_rebalancing_start: Optional[int] = gin.REQUIRED,
 ):
     seed_everything(random_seed)
 
