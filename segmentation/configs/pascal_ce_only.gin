@@ -29,6 +29,7 @@ PatchClassificationDataset.window_size = (513, 513)
 PatchClassificationDataset.only_19_from_cityscapes = False
 
 PatchClassificationDataModule.dataloader_n_jobs = 32
+PatchClassificationDataModule.train_key = 'train_aug'
 
 PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_clst = 0.0

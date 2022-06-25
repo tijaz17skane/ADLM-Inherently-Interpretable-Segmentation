@@ -19,7 +19,8 @@ from settings import data_path
 # noinspection PyAbstractClass
 @gin.configurable(denylist=['batch_size'])
 class PatchClassificationDataModule(LightningDataModule):
-    def __init__(self, batch_size: int, dataloader_n_jobs: int = gin.REQUIRED):
+    def __init__(self, batch_size: int, dataloader_n_jobs: int = gin.REQUIRED,
+                 train_key: str = 'train'):
         super().__init__()
         self.dataloader_n_jobs = dataloader_n_jobs if dataloader_n_jobs != -1 else multiprocessing.cpu_count()
         self.batch_size = batch_size
