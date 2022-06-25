@@ -44,7 +44,7 @@ def train(
         joint_steps: int = gin.REQUIRED,
         warmup_batch_size: int = gin.REQUIRED,
         joint_batch_size: int = gin.REQUIRED,
-        prototype_rebalancing_start: int = gin.REQUIRED,
+        prototype_rebalancing_start: int = Optional[gin.REQUIRED],
 ):
     seed_everything(random_seed)
 
@@ -143,7 +143,7 @@ def train(
             ppnet=ppnet,
             training_phase=1,
             max_steps=joint_steps,
-            prototype_rebalancing=1
+            prototype_rebalancing=1 if prototype_rebalancing_start is not None else None
         )
         trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
                           min_steps=1, max_steps=joint_steps)

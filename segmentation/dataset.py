@@ -151,6 +151,8 @@ class PatchClassificationDataset(VisionDataset):
         else:
             window_size = self.window_size
 
+        window_size = min(window_size[0], target.shape[0]), min(window_size[1], target.shape[1])
+
         window_left = np.random.randint(0, target.shape[0] - window_size[0]+1)
         window_top = np.random.randint(0, target.shape[1] - window_size[1]+1)
         window_right = window_left + window_size[0]
@@ -169,7 +171,7 @@ class PatchClassificationDataset(VisionDataset):
         if self.target_transform is not None:
             target = self.target_transform(target)
 
-        if not self.is_eval:
+        if img.shape[1] != self.window_size[0] or img.shape[2] != self.window_size[1]:
             img = torch.nn.functional.interpolate(img.unsqueeze(0), size=(self.window_size[0], self.window_size[1]),
                                                   mode='bilinear', align_corners=False)[0]
 

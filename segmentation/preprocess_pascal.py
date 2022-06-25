@@ -29,6 +29,8 @@ def process_images_in_chunks(args):
     split_key, img_ids = args
     chunk_img_ids = []
 
+    unique_classes = set()
+
     for img_id in img_ids:
         img_id = img_id.split('_gtFine_labelIds.png')[0]
         chunk_img_ids.append(img_id)
@@ -38,7 +40,7 @@ def process_images_in_chunks(args):
             img = Image.open(f).convert('RGB')
 
         pix = np.array(img).astype(np.uint8)
-        print("ANN", pix.shape, np.unique(pix))
+        unique_classes.update(set(np.unique(pix)))
         # pix.shape = (height, width, channels)
         np.save(os.path.join(ANNOTATIONS_DIR, split_key, img_id), pix)
 
@@ -53,11 +55,10 @@ def process_images_in_chunks(args):
 
         # Save image as .npy for fast loading
         pix = np.array(img).astype(np.uint8)
-        print("IMG", pix.shape)
         # pix.shape = (height, width, channels)
         np.save(os.path.join(MARGIN_IMG_DIR, split_key, img_id), pix)
 
-    return chunk_img_ids
+    return chunk_img_ids, unique_classes
 
 
 def process_obj_masks_in_chunks(args):
@@ -105,12 +106,17 @@ def preprocess_pascal(n_jobs: int, chunk_size: int = 10):
         pool = multiprocessing.Pool(n_jobs)
         prog_bar = tqdm(total=len(split_img_ids), desc=f'{split_key}')
 
-        for chunk_img_ids in pool.imap_unordered(process_images_in_chunks, parallel_args):
+        unique_classes = set()
+
+        for chunk_img_ids, chunk_classes in pool.imap_unordered(process_images_in_chunks, parallel_args):
             img_ids[split_key] += chunk_img_ids
+            unique_classes.update(set(chunk_classes))
             prog_bar.update(len(chunk_img_ids))
 
         prog_bar.close()
         pool.close()
+
+        print(f'{split_key} unique classes:', unique_classes)
 
     with open(os.path.join(TARGET_PATH, 'all_images.json'), 'w') as fp:
         json.dump(img_ids, fp)
