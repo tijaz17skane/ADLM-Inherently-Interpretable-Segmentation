@@ -12,7 +12,7 @@ from torchvision import transforms
 import os
 import gin
 
-from segmentation.constants import CITYSCAPES_19_EVAL_CATEGORIES
+from segmentation.constants import CITYSCAPES_19_EVAL_CATEGORIES, PASCAL_ID_2_LABEL
 from settings import data_path, log
 
 import numpy as np
@@ -56,7 +56,8 @@ class PatchClassificationDataset(VisionDataset):
         if self.only_19_from_cityscapes:
             self.convert_targets = np.vectorize(CITYSCAPES_19_EVAL_CATEGORIES.get)
         else:
-            self.convert_targets = None
+            # pascal
+            self.convert_targets = np.vectorize(PASCAL_ID_2_LABEL.get)
 
         # we generated cityscapes images with max margin earlier
         self.img_dir = os.path.join(data_path, f'img_with_margin_{self.image_margin_size}/{split_key}')

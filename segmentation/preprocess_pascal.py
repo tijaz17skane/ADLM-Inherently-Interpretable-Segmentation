@@ -18,8 +18,6 @@ import multiprocessing
 
 SOURCE_PATH = os.environ['SOURCE_DATA_PATH']
 TARGET_PATH = os.environ['DATA_PATH']
-LABELS_PATH = os.path.join(SOURCE_PATH, 'gtFine_trainvaltest/gtFine/')
-IMAGES_PATH = os.path.join(SOURCE_PATH, 'leftImg8bit_trainvaltest/leftImg8bit/')
 
 ANNOTATIONS_DIR = os.path.join(TARGET_PATH, 'annotations')
 MARGIN_IMG_DIR = os.path.join(TARGET_PATH, 'img_with_margin_0')
@@ -60,24 +58,6 @@ def process_images_in_chunks(args):
     return chunk_img_ids, unique_classes
 
 
-def process_obj_masks_in_chunks(args):
-    split_key, city_name, png_files = args
-
-    split_dir = os.path.join(LABELS_PATH, split_key)
-    city_dir = os.path.join(split_dir, city_name)
-
-    for file in png_files:
-        img_id = file.split('_gtFine_instanceIds.png')[0]
-
-        # Save object mask labels
-        with open(os.path.join(city_dir, file), 'rb') as f:
-            # noinspection PyTypeChecker
-            obj_ids = np.array(Image.open(f).convert('RGB'))[:, :, 0].astype(np.uint8)
-        np.save(os.path.join(ANNOTATIONS_DIR, split_key, f'{img_id}_obj_mask.npy'), obj_ids)
-
-    return len(png_files)
-
-
 def preprocess_pascal(n_jobs: int, chunk_size: int = 10):
     n_jobs = int(n_jobs)
     print(f"Preprocessing PASCAL VOC 2012")
@@ -86,12 +66,12 @@ def preprocess_pascal(n_jobs: int, chunk_size: int = 10):
     os.makedirs(MARGIN_IMG_DIR, exist_ok=True)
 
     img_ids = {
-        'train_aug': [], 'train': [], 'val': [], 'test': []
+        'train_aug': [], 'train': [], 'val': []
     }
 
     split_info_dir = os.path.join(SOURCE_PATH, 'ImageSets/SegmentationAug')
 
-    for split_key in tqdm(['train_aug', 'train', 'val', 'test'], desc='preprocessing images'):
+    for split_key in tqdm(['train_aug', 'train', 'val'], desc='preprocessing images'):
         split_img_ids = [img_id.strip().split('/')[-1].split('.')[0]
                          for img_id in open(os.path.join(split_info_dir, f'{split_key}.txt'), 'r')]
 
