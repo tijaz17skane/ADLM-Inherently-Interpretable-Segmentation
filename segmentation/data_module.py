@@ -25,6 +25,7 @@ class PatchClassificationDataModule(LightningDataModule):
         super().__init__()
         self.dataloader_n_jobs = dataloader_n_jobs if dataloader_n_jobs != -1 else multiprocessing.cpu_count()
         self.batch_size = batch_size
+        self.train_key = train_key
 
     def prepare_data(self):
         if not os.path.exists(os.path.join(data_path, 'annotations')):
@@ -48,7 +49,7 @@ class PatchClassificationDataModule(LightningDataModule):
 
     def train_dataloader(self, **kwargs):
         train_split = PatchClassificationDataset(
-            split_key='train',
+            split_key=self.train_key,
             is_eval=False,
         )
         return self.get_data_loader(train_split, **kwargs)
