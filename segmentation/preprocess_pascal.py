@@ -32,7 +32,6 @@ def process_images_in_chunks(args):
     unique_classes = set()
 
     for img_id in img_ids:
-        img_id = img_id.split('_gtFine_labelIds.png')[0]
         chunk_img_ids.append(img_id)
 
         # 1. Save labels
@@ -92,8 +91,9 @@ def preprocess_pascal(n_jobs: int, chunk_size: int = 10):
 
     split_info_dir = os.path.join(SOURCE_PATH, 'ImageSets/SegmentationAug')
 
-    for split_key in tqdm(['train', 'val', 'test'], desc='preprocessing images'):
-        split_img_ids = [img_id.strip() for img_id in open(os.path.join(split_info_dir, f'{split_key}.txt'))]
+    for split_key in tqdm(['train_aug', 'train', 'val', 'test'], desc='preprocessing images'):
+        split_img_ids = [img_id.strip().split('/')[-1].split('.')[0]
+                         for img_id in open(os.path.join(split_info_dir, f'{split_key}.txt'), 'r')]
 
         os.makedirs(os.path.join(MARGIN_IMG_DIR, split_key), exist_ok=True)
         os.makedirs(os.path.join(ANNOTATIONS_DIR, split_key), exist_ok=True)
@@ -123,4 +123,4 @@ def preprocess_pascal(n_jobs: int, chunk_size: int = 10):
 
 
 if __name__ == '__main__':
-    argh.dispatch_commands(preprocess_pascal)
+    argh.dispatch_command(preprocess_pascal)

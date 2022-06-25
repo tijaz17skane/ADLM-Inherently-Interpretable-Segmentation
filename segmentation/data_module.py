@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from segmentation.dataset import PatchClassificationDataset
 from settings import data_path
 
+
 # Try this out in case of high RAM usage:
 # import torch.multiprocessing
 # torch.multiprocessing.set_sharing_strategy('file_system')
@@ -30,6 +31,13 @@ class PatchClassificationDataModule(LightningDataModule):
             raise ValueError("Please download dataset and preprocess it using 'preprocess.py' script")
 
     def get_data_loader(self, dataset: PatchClassificationDataset, **kwargs) -> DataLoader:
+        if 'batch_size' in kwargs:
+            return DataLoader(
+                dataset=dataset,
+                shuffle=not dataset.is_eval,
+                num_workers=self.dataloader_n_jobs,
+                **kwargs
+            )
         return DataLoader(
             dataset=dataset,
             shuffle=not dataset.is_eval,

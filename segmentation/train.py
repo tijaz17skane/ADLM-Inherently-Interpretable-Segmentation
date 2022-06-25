@@ -137,6 +137,11 @@ def train(
         else:
             current_epoch = -1
 
+        last_checkpoint = os.path.join(results_dir, 'checkpoints/warmup_last.pth')
+        log(f'Loading model after warmup from {last_checkpoint}')
+        ppnet = torch.load(last_checkpoint)
+        ppnet = ppnet.cuda()
+
         data_module = PatchClassificationDataModule(batch_size=joint_batch_size)
         module = PatchClassificationModule(
             model_dir=results_dir,
@@ -205,7 +210,7 @@ def train(
         training_phase=2,
         prototype_rebalancing=None
     )
-    current_epoch = trainer.current_epoch
+    current_epoch = trainer.current_epoch if trainer is not None else 0
     trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
                       enable_progress_bar=False)
     trainer.fit_loop.current_epoch = current_epoch + 1
