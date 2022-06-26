@@ -1,8 +1,8 @@
 """
-Some constants related to Cityscapes and SUN datasets
+Some constants related to Cityscapes and PASCAL datasets
 """
 
-# Taken from deeplabv3 trained on COCO
+# Taken from deeplabv2 trained on ImageNet
 CITYSCAPES_MEAN = [0.485, 0.456, 0.406]
 CITYSCAPES_STD = [0.229, 0.224, 0.225]
 

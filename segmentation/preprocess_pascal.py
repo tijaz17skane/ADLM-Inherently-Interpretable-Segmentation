@@ -37,6 +37,7 @@ def process_images_in_chunks(args):
             img = Image.open(f).convert('RGB')
 
         pix = np.array(img).astype(np.uint8)
+        pix = pix[:, :, 0]
         unique_classes.update(set(np.unique(pix)))
         # pix.shape = (height, width, channels)
         np.save(os.path.join(ANNOTATIONS_DIR, split_key, img_id), pix)
