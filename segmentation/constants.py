@@ -137,3 +137,28 @@ PASCAL_ID_2_LABEL = {
     20: 21,
     21: 22
 }
+
+PASCAL_CATEGORIES = [
+    'void',
+    '__background__',
+    'aeroplane',
+    'bicycle',
+    'bird',
+    'boat',
+    'bottle',
+    'bus',
+    'car',
+    'cat',
+    'chair',
+    'cow',
+    'diningtable',
+    'dog',
+    'horse',
+    'motorbike',
+    'person',
+    'pottedplant',
+    'sheep',
+    'sofa',
+    'train',
+    'tvmonitor'
+]

@@ -180,8 +180,11 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
     model_output_height = conv_features.shape[2]
     model_output_width = conv_features.shape[3]
 
-    patch_height = 1024 / model_output_height
-    patch_width = 2048 / model_output_width
+    img_height = img_y.shape[0]
+    img_width = img_y.shape[1]
+
+    patch_height = img_height / model_output_height
+    patch_width = img_width / model_output_width
 
     # conv_features = torch.nn.functional.interpolate(conv_features, size=(1024, 2048),
     # mode='bilinear', align_corners=False)
@@ -341,7 +344,9 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                                vmin=0.0,
                                vmax=1.0)
 
-                    plt.figure(figsize=(20.48, 10.24))  # for 100 DPI
+                    DPI = 100
+
+                    plt.figure(figsize=(img_width/DPI, img_height/DPI))
                     plt.imshow(original_img_j)
                     plt.plot([rf_start_w_index, rf_start_w_index], [rf_start_h_index, rf_end_h_index],
                              [rf_end_w_index, rf_end_w_index], [rf_start_h_index, rf_end_h_index],
@@ -386,7 +391,7 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                                vmin=0.0,
                                vmax=1.0)
 
-                    plt.figure(figsize=(20.48, 10.24))  # for 100 DPI
+                    plt.figure(figsize=(img_width/DPI, img_height/DPI))
                     plt.imshow(overlayed_original_img_j)
                     plt.plot([rf_start_w_index, rf_start_w_index], [rf_start_h_index, rf_end_h_index],
                              [rf_end_w_index, rf_end_w_index], [rf_start_h_index, rf_end_h_index],
