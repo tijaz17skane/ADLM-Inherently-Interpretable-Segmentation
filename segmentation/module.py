@@ -355,7 +355,9 @@ class PatchClassificationModule(LightningModule):
                 if self.randomize_all_below_threshold:
                     torch.nn.init.uniform_(self.ppnet.prototype_vectors[proto_num])
                     randomized_prototypes.append(proto_ind)
-                break
+                    continue
+                else:
+                    break
 
             log(f'Moving prototype {proto_num} ({(frac_top_proto[proto_ind] * 100):.4f}%) '
                 f'from class {self.proto2cls[proto_num]} to class {saturated_class} '
@@ -377,10 +379,10 @@ class PatchClassificationModule(LightningModule):
             self.ppnet.prototype_class_identity[proto_num] = 0.0
             self.ppnet.prototype_class_identity[proto_num, saturated_class] = 1.0
 
-            if len(randomized_prototypes) > 0:
-                log(f'Randomized {len(randomized_prototypes)} prototypes below threshold: {randomized_prototypes}')
-
             cls_i += 1
+
+        if len(randomized_prototypes) > 0:
+            log(f'Randomized {len(randomized_prototypes)} prototypes below threshold: {randomized_prototypes}')
 
         if any_moved or self.rebalance_epoch_counter == 0:
             # log new class identity

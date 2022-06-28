@@ -51,7 +51,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
     pred2name = {k - 1: i for i, k in ID_MAPPING.items() if k > 0}
     if pascal:
-        pred2name = {i: CATEGORIES[k+1] for i, k in pred2name.items()}
+        pred2name = {i: CATEGORIES[k+1] for i, k in pred2name.items() if k < len(CATEGORIES)-1}
     else:
         pred2name = {i: CATEGORIES[k] for i, k in pred2name.items()}
 
