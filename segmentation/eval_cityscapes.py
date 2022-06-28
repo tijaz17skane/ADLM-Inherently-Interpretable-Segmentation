@@ -50,7 +50,10 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
     CATEGORIES = PASCAL_CATEGORIES if pascal else CITYSCAPES_CATEGORIES
 
     pred2name = {k - 1: i for i, k in ID_MAPPING.items() if k > 0}
-    pred2name = {i: CATEGORIES[k] for i, k in pred2name.items()}
+    if pascal:
+        pred2name = {i: CATEGORIES[k+1] for i, k in pred2name.items()}
+    else:
+        pred2name = {i: CATEGORIES[k] for i, k in pred2name.items()}
 
     cls_prototype_counts = [Counter() for _ in range(len(pred2name))]
     proto_ident = ppnet.prototype_class_identity.cpu().detach().numpy()
@@ -78,6 +81,9 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
     with torch.no_grad():
         for cls_i in range(ppnet.num_classes):
             cls_proto_ind = (proto_ident[:, cls_i] == 1).nonzero()[0]
+            if len(cls_proto_ind) < 2:
+                all_cls_distances.append(None)
+                continue
             cls_protos = protos[cls_proto_ind]
 
             distances = torch.cdist(cls_protos, cls_protos)
@@ -94,10 +100,10 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
     plt.suptitle(f'{model_name} ({training_phase})\nHistogram of distances between same-class prototypes')
     axes = axes.flatten()
     class_i = 0
-    # print(len(pred2name), len(axes), len(all_cls_distances))
-    # 22 25 21
 
     for class_i, class_name in pred2name.items():
+        if all_cls_distances[class_i] is None:
+            continue
         axes[class_i].hist(all_cls_distances[class_i], bins=10)
         d_min, d_avg, d_max = np.min(all_cls_distances[class_i]), np.mean(all_cls_distances[class_i]), np.max(
             all_cls_distances[class_i])
