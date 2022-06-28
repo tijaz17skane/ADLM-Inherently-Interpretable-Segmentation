@@ -55,6 +55,7 @@ class PPNet(nn.Module):
         self.bottleneck_stride = bottleneck_stride
         self.patch_classification = patch_classification
         self.nearest_proto_only = nearest_proto_only
+        self.gumbel_tau = 0.5  # TODO make configurable, add annealing
 
         # prototype_activation_function could be 'log', 'linear',
         # or a generic function that converts distance to similarity score
@@ -73,7 +74,7 @@ class PPNet(nn.Module):
 
         num_prototypes_per_class = self.num_prototypes // self.num_classes
         for i in range(self.num_classes):
-            self.prototype_class_identity[i * num_prototypes_per_class:(i+1) * num_prototypes_per_class, i] = 1
+            self.prototype_class_identity[i * num_prototypes_per_class:(i + 1) * num_prototypes_per_class, i] = 1
 
         self.num_prototypes_per_class = num_prototypes_per_class
         self.proto_layer_rf_info = proto_layer_rf_info
@@ -125,7 +126,7 @@ class PPNet(nn.Module):
             log('deeplab add_on_layers')
             self.add_on_layers = nn.Sequential(
                 nn.ReLU(),
-                nn.Conv2d(in_channels=first_add_on_layer_in_channels, 
+                nn.Conv2d(in_channels=first_add_on_layer_in_channels,
                           out_channels=self.prototype_shape[1],
                           kernel_size=1),
                 nn.Sigmoid()
@@ -167,11 +168,23 @@ class PPNet(nn.Module):
             for cls_i in range(self.prototype_class_identity.shape[1]):
                 proto_ind = torch.nonzero(self.prototype_class_identity[:, cls_i] == 1).flatten()
                 if len(proto_ind) == 0:
-                    max_cls_activation = torch.zeros(prototype_activations.shape[0],
-                                                     device=prototype_activations.device)
+                    cls_activation = torch.zeros(prototype_activations.shape[0],
+                                                 device=prototype_activations.device)
                 else:
-                    max_cls_activation, _ = torch.max(prototype_activations[:, proto_ind], dim=-1)
-                cls_logits.append(max_cls_activation)
+                    cls_prototype_activations = prototype_activations[:, proto_ind]
+                    if self.training:
+                        # Sample soft categorical using reparametrization trick
+                        gumbel_softmax = F.gumbel_softmax(
+                            cls_prototype_activations,
+                            tau=self.gumbel_tau,
+                            hard=False
+                        )
+                        cls_prototype_activations = cls_prototype_activations * gumbel_softmax
+                        cls_activation = torch.sum(cls_prototype_activations, dim=-1)
+                    else:
+                        cls_activation, _ = torch.max(cls_prototype_activations, dim=-1)
+
+                cls_logits.append(cls_activation)
             cls_logits = torch.stack(cls_logits, dim=-1)
             return self.last_layer(cls_logits)
         else:
@@ -255,7 +268,7 @@ class PPNet(nn.Module):
         conv_features = self.conv_features(x)
         logits, distances = self.forward_from_conv_features(conv_features)
         return logits, distances, conv_features
-    
+
     def forward_from_conv_features(self, conv_features, return_distances=False):
         # distances.shape = (batch_size, num_prototypes, n_patches_cols, n_patches_rows)
         distances = self._l2_convolution(conv_features)

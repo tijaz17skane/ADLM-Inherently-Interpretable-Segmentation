@@ -130,10 +130,12 @@ def train(
                 max_steps=warmup_steps,
                 prototype_rebalancing=prototype_rebalancing_start
             )
+            ppnet.gumbel_tau = 1.0  # TODO make configurable, add annealing
             trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
                               min_steps=1, max_steps=warmup_steps)
             trainer.fit(model=module, datamodule=data_module)
             current_epoch = trainer.current_epoch
+            ppnet.gumbel_tau = 0.5  # TODO make configurable, add annealing
         else:
             current_epoch = -1
 

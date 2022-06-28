@@ -207,7 +207,7 @@ class PatchClassificationModule(LightningModule):
         output_class = torch.argmax(output, dim=-1)
         is_correct = output_class == target
 
-        if hasattr(self.ppnet, 'patch_classification') and self.ppnet.patch_classification:
+        if hasattr(self.ppnet, 'nearest_proto_only') and self.ppnet.nearest_proto_only:
             l1_mask = 1 - torch.eye(self.ppnet.num_classes, device=self.device)
         else:
             l1_mask = 1 - torch.t(prototype_class_identity)
@@ -458,6 +458,8 @@ class PatchClassificationModule(LightningModule):
 
         self.log(f'{split_key}/accuracy', metrics['n_correct'] / metrics['n_patches'])
         self.log('l1', self.ppnet.last_layer.weight.norm(p=1).item())
+        if hasattr(self.ppnet, 'nearest_proto_only') and self.ppnet.nearest_proto_only:
+            self.log('gumbel_tau', self.ppnet.gumbel_tau)
 
     def training_epoch_end(self, step_outputs):
         return self._epoch_end('train')
