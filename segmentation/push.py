@@ -139,7 +139,7 @@ def push_prototypes(dataset: PatchClassificationDataset,
     prototype_network_parallel.prune_prototypes(duplicate_idx)
     os.makedirs(root_dir_for_saving_prototypes, exist_ok=True)
     with open(os.path.join(root_dir_for_saving_prototypes, 'unique_prototypes.json'), 'w') as fp:
-        json.dump(list(unique_index), fp)
+        json.dump([int(i) for i in sorted(unique_index)], fp)
 
     end = time.time()
     log('\tpush time: \t{0}'.format(end - start))

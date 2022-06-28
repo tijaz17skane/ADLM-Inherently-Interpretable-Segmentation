@@ -116,18 +116,19 @@ def find_k_nearest_patches_to_prototypes(dataset,
         # -1 because we ignore void class
         search_y = search_y - 1
 
-        img_height = search_y.shape[0]
-        img_width = search_y.shape[1]
+        img_height = search_y.shape[1]
+        img_width = search_y.shape[2]
 
         patch_height = img_height / model_output_height
         patch_width = img_width / model_output_width
 
         # protoL_input_ = np.copy(protoL_input_torch.detach().cpu().numpy())
 
+        # interpolated_y = np.expand_dims(resize_label(search_y[0], size=(257, 129)).cpu().detach().numpy(), (0, 1))
+        interpolated_y = np.expand_dims(resize_label(
+            search_y[0], size=(proto_dist_.shape[3], proto_dist_.shape[2])
+        ).cpu().detach().numpy(), (0, 1))
         # we ignore activation in 'void' class pixels
-        # (1, 190, 129, 257)(1, 1024, 2048)
-        # TODO find shape
-        interpolated_y = np.expand_dims(resize_label(search_y[0], size=(257, 129)).cpu().detach().numpy(), (0, 1))
         proto_dist_ = proto_dist_ + 10e6 * (interpolated_y == -1)
 
         for img_idx, distance_map in enumerate(proto_dist_):

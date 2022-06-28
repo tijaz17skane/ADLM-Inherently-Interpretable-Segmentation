@@ -112,7 +112,7 @@ CITYSCAPES_19_EVAL_CATEGORIES = {
     28: 0,
 }
 
-PASCAL_ID_2_LABEL = {
+PASCAL_ID_MAPPING = {
     255: 0,
     0: 1,
     1: 2,

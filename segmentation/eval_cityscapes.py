@@ -10,11 +10,13 @@ import torch
 from torch.nn import functional as F
 from torchvision import transforms
 
-from segmentation.constants import CITYSCAPES_CATEGORIES, CITYSCAPES_19_EVAL_CATEGORIES
+from segmentation.constants import CITYSCAPES_CATEGORIES, CITYSCAPES_19_EVAL_CATEGORIES, \
+    PASCAL_CATEGORIES, PASCAL_ID_MAPPING
 from settings import data_path, log
 
 
-def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4):
+def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4, pascal: bool = True,
+                   margin: int = 0):
     model_path = os.path.join(os.environ['RESULTS_DIR'], model_name)
     log(f'Loading model from {model_path}')
     config_path = os.path.join(model_path, 'config.gin')
@@ -37,26 +39,28 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4):
         transforms.Normalize(mean=NORM_MEAN, std=NORM_STD)
     ])
 
-    img_dir = os.path.join(data_path, 'img_with_margin_512/val')
+    img_dir = os.path.join(data_path, f'img_with_margin_{margin}/val')
     all_img_files = [p for p in os.listdir(img_dir) if p.endswith('.npy')]
 
     ann_dir = os.path.join(data_path, 'annotations/val')
 
-    pred2name = {k - 1: i for i, k in CITYSCAPES_19_EVAL_CATEGORIES.items() if k > 0}
-    pred2name = {i: CITYSCAPES_CATEGORIES[k] for i, k in pred2name.items()}
+    ID_MAPPING = PASCAL_ID_MAPPING if pascal else CITYSCAPES_19_EVAL_CATEGORIES
+    CATEGORIES = PASCAL_CATEGORIES if pascal else CITYSCAPES_CATEGORIES
+
+    pred2name = {k - 1: i for i, k in ID_MAPPING.items() if k > 0}
+    pred2name = {i: CATEGORIES[k] for i, k in pred2name.items()}
 
     cls_prototype_counts = [Counter() for _ in range(len(pred2name))]
-    mean_top_k = np.zeros(200, dtype=float)
+    proto_ident = ppnet.prototype_class_identity.cpu().detach().numpy()
+    mean_top_k = np.zeros(proto_ident.shape[0], dtype=float)
 
-    MARGIN = 512
     RESULTS_DIR = os.path.join(model_path, f'evaluation/notebook_plots/{training_phase}')
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    CLS_CONVERT = np.vectorize(CITYSCAPES_19_EVAL_CATEGORIES.get)
+    CLS_CONVERT = np.vectorize(ID_MAPPING.get)
 
     proto2cls = {}
     cls2protos = {c: [] for c in range(ppnet.num_classes)}
-    proto_ident = ppnet.prototype_class_identity.cpu().detach().numpy()
 
     for proto_num in range(proto_ident.shape[0]):
         cls = np.argmax(proto_ident[proto_num])
@@ -66,13 +70,11 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4):
     PROTO2CLS = np.vectorize(proto2cls.get)
 
     protos = ppnet.prototype_vectors.squeeze()
-    n_per_class = 10
-    n_classes = protos.shape[0] // n_per_class
 
     all_cls_distances = []
 
     with torch.no_grad():
-        for cls_i in range(n_classes):
+        for cls_i in range(ppnet.num_classes):
             cls_proto_ind = (proto_ident[:, cls_i] == 1).nonzero()[0]
             cls_protos = protos[cls_proto_ind]
 
@@ -84,16 +86,20 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4):
             distances = distances.cpu().detach().numpy()
             all_cls_distances.append(distances)
 
-    fig, axes = plt.subplots(4, 5, figsize=(15, 12))
+    n_rows = 4 if len(pred2name) <= 20 else 5
+    fig, axes = plt.subplots(n_rows, 5, figsize=(15, 12))
+
     plt.suptitle(f'{model_name} ({training_phase})\nHistogram of distances between same-class prototypes')
     axes = axes.flatten()
+    class_i = 0
     for class_i, class_name in pred2name.items():
         axes[class_i].hist(all_cls_distances[class_i], bins=10)
         d_min, d_avg, d_max = np.min(all_cls_distances[class_i]), np.mean(all_cls_distances[class_i]), np.max(
             all_cls_distances[class_i])
         axes[class_i].set_title(f'{class_name}\nmin: {d_min:.2f} avg: {d_avg:.2f} max: {d_max:.2f}')
 
-    axes[-1].axis('off')  # there are 19 classes in cityscapes
+    for i in range(class_i, len(axes)):
+        axes[i].axis('off')
 
     plt.tight_layout()
     plt.savefig(os.path.join(RESULTS_DIR, 'histogram_dist_same_class_prototypes.png'))
@@ -118,7 +124,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4):
                 ann = np.load(os.path.join(ann_dir, img_file))
                 ann = CLS_CONVERT(ann)
 
-                img = img[MARGIN:-MARGIN, MARGIN:-MARGIN]
+                img = img[margin:-margin, margin:-margin]
                 img_shape = (img.shape[0], img.shape[1])
                 img_tensors.append(transform(img))
                 anns.append(ann)
@@ -140,7 +146,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4):
             correct_pixels += np.sum(((pred + 1) == anns) & (anns != 0))
             total_pixels += np.sum(anns != 0)
 
-            for cls_i in range(19):
+            for cls_i in range(ppnet.num_classes):
                 pr = pred == cls_i
                 gt = anns == cls_i + 1
 
@@ -179,14 +185,14 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4):
                     mean_top_k[k] += nearest_k * 100 / n_random_pixels
 
     pixel_accuracy = correct_pixels / total_pixels * 100
-    reverse_cat_dict = {v: k for k, v in CITYSCAPES_19_EVAL_CATEGORIES.items()}
+    reverse_cat_dict = {v: k for k, v in ID_MAPPING.items()}
 
     CLS_IOU = {cls_i + 1: (CLS_I[cls_i] * 100) / u for cls_i, u in CLS_U.items() if u > 0}
     mean_iou = np.mean(list(CLS_IOU.values()))
     keys = list(sorted(CLS_IOU.keys()))
 
     vals = [CLS_IOU[k] for k in keys]
-    keys = [CITYSCAPES_CATEGORIES[reverse_cat_dict[cls_i]] for cls_i in keys]
+    keys = [CATEGORIES[reverse_cat_dict[cls_i]] for cls_i in keys]
 
     plt.figure(figsize=(15, 5))
     xticks = np.arange(len(keys))
@@ -205,7 +211,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4):
     plt.xlabel('Nearest K prototypes to a pixel')
     plt.ylabel('% of K prototypes from pixel class')
     plt.ylim([0, 100])
-    xticks = np.arange(20) * 10
+    xticks = [i for i in (np.arange(20) * 10) if i < proto_ident.shape[0]]
     plt.xticks(xticks, xticks)
     plt.plot(mean_top_k / (len(batched_img_files) * batch_size))
     plt.tight_layout()
@@ -234,9 +240,9 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4):
         img = np.load(os.path.join(img_dir, img_file)).astype(np.uint8)
 
         ann = np.load(os.path.join(ann_dir, img_file))
-        ann = np.vectorize(CITYSCAPES_19_EVAL_CATEGORIES.get)(ann)
+        ann = np.vectorize(ID_MAPPING.get)(ann)
 
-        img = img[MARGIN:-MARGIN, MARGIN:-MARGIN]
+        img = img[margin:-margin, margin:-margin]
         img_shape = (img.shape[0], img.shape[1])
 
         with torch.no_grad():
