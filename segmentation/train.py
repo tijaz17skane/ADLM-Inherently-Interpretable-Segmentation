@@ -120,27 +120,28 @@ def train(
             neptune_run['config'] = json_gin_config
 
         shutil.copy(f'segmentation/configs/{config_path}.gin', os.path.join(results_dir, 'config.gin'))
+        
+        # TODO temporary
+        # if warmup_steps > 0:
+            # data_module = PatchClassificationDataModule(batch_size=warmup_batch_size)
+            # module = PatchClassificationModule(
+                # model_dir=results_dir,
+                # ppnet=ppnet,
+                # training_phase=0,
+                # max_steps=warmup_steps,
+                # prototype_rebalancing=prototype_rebalancing_start
+            # )
+            # trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
+                              # min_steps=1, max_steps=warmup_steps)
+            # trainer.fit(model=module, datamodule=data_module)
+            # current_epoch = trainer.current_epoch
+        # else:
+            # current_epoch = -1
 
-        if warmup_steps > 0:
-            data_module = PatchClassificationDataModule(batch_size=warmup_batch_size)
-            module = PatchClassificationModule(
-                model_dir=results_dir,
-                ppnet=ppnet,
-                training_phase=0,
-                max_steps=warmup_steps,
-                prototype_rebalancing=prototype_rebalancing_start
-            )
-            trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
-                              min_steps=1, max_steps=warmup_steps)
-            trainer.fit(model=module, datamodule=data_module)
-            current_epoch = trainer.current_epoch
-        else:
-            current_epoch = -1
-
-        last_checkpoint = os.path.join(results_dir, 'checkpoints/warmup_last.pth')
-        log(f'Loading model after warmup from {last_checkpoint}')
-        ppnet = torch.load(last_checkpoint)
-        ppnet = ppnet.cuda()
+        # last_checkpoint = os.path.join(results_dir, 'checkpoints/warmup_last.pth')
+        # log(f'Loading model after warmup from {last_checkpoint}')
+        # ppnet = torch.load(last_checkpoint)
+        # ppnet = ppnet.cuda()
 
         data_module = PatchClassificationDataModule(batch_size=joint_batch_size)
         module = PatchClassificationModule(
@@ -152,13 +153,21 @@ def train(
         )
         trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
                           min_steps=1, max_steps=joint_steps)
-        trainer.fit_loop.current_epoch = current_epoch + 1
-        trainer.fit(model=module, datamodule=data_module)
+        # trainer.fit_loop.current_epoch = current_epoch + 1
+        # trainer.fit(model=module, datamodule=data_module)
 
-        log('SAVING PROTOTYPES')
+        # log('SAVING PROTOTYPES')
+        # ppnet = ppnet.cuda()
+        # module.eval()
+        # torch.set_grad_enabled(False)
+
+        # TODO temp
+        last_checkpoint = os.path.join(results_dir, 'checkpoints/nopush_last.pth')
+        log(f'Loading model from {last_checkpoint}')
+        ppnet = torch.load(last_checkpoint)
         ppnet = ppnet.cuda()
-        module.eval()
-        torch.set_grad_enabled(False)
+
+        current_epoch = 200
 
         push_dataset = PatchClassificationDataset(
             split_key='train',
@@ -171,7 +180,8 @@ def train(
             prototype_network_parallel=ppnet,
             prototype_layer_stride=1,
             root_dir_for_saving_prototypes=module.prototypes_dir,
-            epoch_number=trainer.current_epoch,
+            epoch_number=current_epoch,
+            # epoch_number=trainer.current_epoch,
             prototype_img_filename_prefix='prototype-img',
             prototype_self_act_filename_prefix='prototype-self-act',
             proto_bound_boxes_filename_prefix='bb',

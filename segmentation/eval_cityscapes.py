@@ -10,22 +10,24 @@ import torch
 from torch.nn import functional as F
 from torchvision import transforms
 
+from segmentation import train
+from segmentation.dataset import resize_label
 from segmentation.constants import CITYSCAPES_CATEGORIES, CITYSCAPES_19_EVAL_CATEGORIES, \
     PASCAL_CATEGORIES, PASCAL_ID_MAPPING
 from settings import data_path, log
 
 
-def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4, pascal: bool = True,
+def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pascal: bool = True,
                    margin: int = 0):
     model_path = os.path.join(os.environ['RESULTS_DIR'], model_name)
     log(f'Loading model from {model_path}')
     config_path = os.path.join(model_path, 'config.gin')
     gin.parse_config_file(config_path)
-    
+
     if training_phase == 'pruned':
-       checkpoint_path = os.path.join(model_path, 'pruned/pruned.pth')
+        checkpoint_path = os.path.join(model_path, 'pruned/pruned.pth')
     else:
-       checkpoint_path = os.path.join(model_path, f'checkpoints/{training_phase}_last.pth')
+        checkpoint_path = os.path.join(model_path, f'checkpoints/{training_phase}_last.pth')
 
     ppnet = torch.load(checkpoint_path)  # , map_location=torch.device('cpu'))
     ppnet = ppnet.cuda()
@@ -92,6 +94,9 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4, pa
     plt.suptitle(f'{model_name} ({training_phase})\nHistogram of distances between same-class prototypes')
     axes = axes.flatten()
     class_i = 0
+    # print(len(pred2name), len(axes), len(all_cls_distances))
+    # 22 25 21
+
     for class_i, class_name in pred2name.items():
         axes[class_i].hist(all_cls_distances[class_i], bins=10)
         d_min, d_avg, d_max = np.min(all_cls_distances[class_i]), np.mean(all_cls_distances[class_i]), np.max(
@@ -124,9 +129,15 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4, pa
                 ann = np.load(os.path.join(ann_dir, img_file))
                 ann = CLS_CONVERT(ann)
 
-                img = img[margin:-margin, margin:-margin]
-                img_shape = (img.shape[0], img.shape[1])
-                img_tensors.append(transform(img))
+                if margin != 0:
+                    img = img[margin:-margin, margin:-margin]
+                img_shape = (513, 513)
+                img_tensor = transform(img)
+                img_tensor = torch.nn.functional.interpolate(img_tensor.unsqueeze(0),
+                                                             size=(513, 513), mode='bilinear', align_corners=False)[0]
+                img_tensors.append(img_tensor)
+
+                ann = resize_label(ann, size=(513, 513)).cpu().detach().numpy()
                 anns.append(ann)
 
             anns = np.stack(anns, axis=0)
@@ -166,7 +177,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4, pa
             del is_class_proto
 
             # calculate top K nearest prototypes for random sample of pixels for speed
-            for sample_i in range(batch_size):
+            for sample_i in range(len(batch_img_files)):
                 n_random_pixels = 100
 
                 sample_distances = distances[sample_i]
@@ -207,7 +218,8 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4, pa
         json.dump(CLS_IOU, fp)
 
     plt.figure(figsize=(10, 5))
-    plt.title(f'{model_name} ({training_phase})\nHow many of the nearest K prototypes to a random pixel are from its predicted class?')
+    plt.title(
+        f'{model_name} ({training_phase})\nHow many of the nearest K prototypes to a random pixel are from its predicted class?')
     plt.xlabel('Nearest K prototypes to a pixel')
     plt.ylabel('% of K prototypes from pixel class')
     plt.ylim([0, 100])
@@ -217,8 +229,10 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4, pa
     plt.tight_layout()
     plt.savefig(os.path.join(RESULTS_DIR, 'class_prototypes_in_nearest_k.png'))
 
-    fig, axes = plt.subplots(4, 5, figsize=(15, 12))
-    plt.suptitle(f'{model_name} ({training_phase})\nOccurences (%) of 10 prototypes of each class in its top nearest class for each pixel')
+    n_rows = 4 if len(pred2name) <= 20 else 5
+    fig, axes = plt.subplots(n_rows, 5, figsize=(15, 12))
+    plt.suptitle(
+        f'{model_name} ({training_phase})\nOccurences (%) of 10 prototypes of each class in its top nearest class for each pixel')
     axes = axes.flatten()
     for class_i, class_name in pred2name.items():
         n, c = zip(*cls_prototype_counts[class_i].most_common())
@@ -241,13 +255,23 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4, pa
 
         ann = np.load(os.path.join(ann_dir, img_file))
         ann = np.vectorize(ID_MAPPING.get)(ann)
+        ann = resize_label(ann, size=(513, 513)).cpu().detach().numpy()
 
-        img = img[margin:-margin, margin:-margin]
-        img_shape = (img.shape[0], img.shape[1])
+        if margin != 0:
+            img = img[margin:-margin, margin:-margin]
+        img_shape = (513, 513)
 
         with torch.no_grad():
             img_tensor = transform(img).unsqueeze(0).cuda()
+            img_tensor = torch.nn.functional.interpolate(img_tensor, size=(513, 513),
+                                                         mode='bilinear', align_corners=False)
             logits, distances = ppnet.forward(img_tensor)
+
+            img = torch.tensor(img).cuda().permute(2, 0, 1).unsqueeze(0).float()
+            img = torch.nn.functional.interpolate(img, size=(513, 513),
+                                                  mode='bilinear', align_corners=False)
+            img = img.cpu().detach().numpy()[0].astype(int)
+            img = img.transpose(1, 2, 0)
 
             logits = logits.permute(0, 3, 1, 2)
 
@@ -282,7 +306,8 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 4, pa
         plt.close()
 
         plt.figure(figsize=(img.shape[1] / DPI, img.shape[0] / DPI))
-        plt.title(f'{model_name} ({training_phase})\nExample {example_i}. Nearest prototypes (from interpolated distances)')
+        plt.title(
+            f'{model_name} ({training_phase})\nExample {example_i}. Nearest prototypes (from interpolated distances)')
         plt.imshow(img)
         plt.imshow(nearest_proto, alpha=0.5, vmin=0, vmax=9)
         plt.imshow(np.zeros_like(pred), alpha=void_mask, vmin=0, vmax=1, cmap='gray')
