@@ -55,5 +55,5 @@ PatchClassificationModule.randomize_all_below_threshold = True
 PatchClassificationModule.prototype_rebalance_every = 1
 
 PPNet.bottleneck_stride = 1
-PPNet.nearest_proto_only = False
+PPNet.nearest_proto_only = True
 PPNet.patch_classification = True
