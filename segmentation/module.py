@@ -13,6 +13,7 @@ import numpy as np
 
 from helpers import list_of_distances
 from model import PPNet
+from segmentation.dataset import resize_label
 from settings import log
 from train_and_test import warm_only, joint, last_only
 
@@ -62,7 +63,8 @@ class PatchClassificationModule(LightningModule):
             prototype_rebalancing_threshold: float = gin.REQUIRED,
             prototype_initialization_method: str = gin.REQUIRED,
             prototype_rebalance_every: int = gin.REQUIRED,
-            ignore_void_class: bool = False
+            ignore_void_class: bool = False,
+            randomize_all_below_threshold: bool = False,
     ):
         super().__init__()
         self.model_dir = model_dir
@@ -90,6 +92,7 @@ class PatchClassificationModule(LightningModule):
         self.prototype_rebalancing_threshold = prototype_rebalancing_threshold
         self.prototype_initialization_method = prototype_initialization_method
         self.ignore_void_class = ignore_void_class
+        self.randomize_all_below_threshold = randomize_all_below_threshold
 
         os.makedirs(self.prototypes_dir, exist_ok=True)
         os.makedirs(self.checkpoints_dir, exist_ok=True)
@@ -151,6 +154,15 @@ class PatchClassificationModule(LightningModule):
         image = image.to(self.device)
         target = target.to(self.device).to(torch.float32)
         output, patch_distances = self.ppnet.forward(image)
+
+        # resize targets
+        target = target.cpu().detach().numpy()
+        resized_targets = []
+        for sample_target in target:
+            sample_target = resize_label(sample_target, size=(output.shape[2], output.shape[1]))
+            resized_targets.append(sample_target)
+        target = np.stack(resized_targets, axis=0)
+        target = torch.tensor(target, device=output.device)
 
         # we flatten target/output - classification is done per patch
         output = output.reshape(-1, output.shape[-1])
@@ -313,10 +325,12 @@ class PatchClassificationModule(LightningModule):
         cls_proto_saturation = np.asarray(cls_proto_saturation)
         top_classes_by_proto_saturation = np.argsort(-cls_proto_saturation)
 
+        randomized_prototypes = []
+
         # up to "NUM_CLASSES" prototypes are moved to different classes
         cls_i = 0
         any_moved = False
-        for proto_ind in np.argsort(frac_top_proto)[:self.ppnet.num_classes]:
+        for proto_ind in np.argsort(frac_top_proto):
             proto_num = proto_nums[proto_ind]
 
             if frac_top_proto[proto_ind] >= self.prototype_rebalancing_threshold:
@@ -326,11 +340,17 @@ class PatchClassificationModule(LightningModule):
                 cls_i += 1
 
             if cls_i >= self.ppnet.num_classes:
-                break
+                saturated_class = None
+            else:
+                saturated_class = top_classes_by_proto_saturation[cls_i]
+                if (saturated_class == self.proto2cls[proto_num] or
+                        cls_proto_saturation[saturated_class] < self.prototype_rebalancing_threshold):
+                    saturated_class = None
 
-            saturated_class = top_classes_by_proto_saturation[cls_i]
-            if (saturated_class == self.proto2cls[proto_num] or
-                    cls_proto_saturation[saturated_class] < self.prototype_rebalancing_threshold):
+            if saturated_class is None:
+                if self.randomize_all_below_threshold:
+                    torch.nn.init.uniform_(self.ppnet.prototype_vectors[proto_num])
+                    randomized_prototypes.append(proto_ind)
                 break
 
             log(f'Moving prototype {proto_num} ({(frac_top_proto[proto_ind] * 100):.4f}%) '
@@ -339,7 +359,7 @@ class PatchClassificationModule(LightningModule):
             any_moved = True
 
             if self.prototype_initialization_method == 'random':
-                torch.nn.init.normal_(self.ppnet.prototype_vectors[proto_num], mean=0, std=0.01)
+                torch.nn.init.uniform_(self.ppnet.prototype_vectors[proto_num])
             elif self.prototype_initialization_method == 'mean':
                 cls_proto_mean = torch.zeros((self.ppnet.prototype_vectors.shape[1], 1, 1),
                                              dtype=torch.float, device=self.ppnet.prototype_vectors.device)
@@ -352,6 +372,9 @@ class PatchClassificationModule(LightningModule):
 
             self.ppnet.prototype_class_identity[proto_num] = 0.0
             self.ppnet.prototype_class_identity[proto_num, saturated_class] = 1.0
+
+            if len(randomized_prototypes) > 0:
+                log(f'Randomized {len(randomized_prototypes)} prototypes below threshold: {randomized_prototypes}')
 
             cls_i += 1
 

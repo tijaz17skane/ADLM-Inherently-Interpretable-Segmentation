@@ -19,7 +19,7 @@ train.start_checkpoint = ''
 train.warmup_steps = 25000
 train.joint_steps = 100000
 train.warmup_batch_size = 32
-train.joint_batch_size = 3
+train.joint_batch_size = 4
 train.prototype_rebalancing_start = 920 # ~5 epochs with batch size 32
 
 PatchClassificationDataset.mean = [0.485, 0.456, 0.406]

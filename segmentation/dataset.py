@@ -39,7 +39,7 @@ class PatchClassificationDataset(VisionDataset):
             mean: List[float] = gin.REQUIRED,
             std: List[float] = gin.REQUIRED,
             image_margin_size: int = gin.REQUIRED,
-            window_size: Optional[Tuple[float, float]] = None,
+            window_size: Optional[Tuple[int, int]] = None,
             only_19_from_cityscapes: bool = False
 
     ):
@@ -179,7 +179,8 @@ class PatchClassificationDataset(VisionDataset):
             img = torch.nn.functional.interpolate(img.unsqueeze(0), size=(self.window_size[0], self.window_size[1]),
                                                   mode='bilinear', align_corners=False)[0]
 
-        # TODO un-hardcode size
-        target = resize_label(target, size=(65, 65))
+        target = Image.fromarray(target.astype(float)).\
+            resize((self.window_size[1], self.window_size[0]), resample=Image.NEAREST)
+        target = np.asarray(target)
 
         return img, target

@@ -36,13 +36,14 @@ base_architecture_to_features = {'resnet18': resnet18_features,
                                  'vgg19_bn': vgg19_bn_features}
 
 
-@gin.configurable(allowlist=['bottleneck_stride', 'patch_classification'])
+@gin.configurable(allowlist=['bottleneck_stride', 'patch_classification', 'nearest_proto_only'])
 class PPNet(nn.Module):
     def __init__(self, features, img_size, prototype_shape,
                  proto_layer_rf_info, num_classes, init_weights=True,
                  prototype_activation_function='log',
                  add_on_layers_type='bottleneck',
                  bottleneck_stride: Optional[int] = None,
+                 nearest_proto_only: bool = False,
                  patch_classification: bool = False):
 
         super(PPNet, self).__init__()
@@ -53,6 +54,7 @@ class PPNet(nn.Module):
         self.epsilon = 1e-4
         self.bottleneck_stride = bottleneck_stride
         self.patch_classification = patch_classification
+        self.nearest_proto_only = nearest_proto_only
 
         # prototype_activation_function could be 'log', 'linear',
         # or a generic function that converts distance to similarity score
@@ -155,6 +157,19 @@ class PPNet(nn.Module):
         if init_weights:
             self._initialize_weights()
 
+    def run_last_layer(self, prototype_activations):
+        if self.nearest_proto_only:
+            cls_logits = []
+            for cls_i in range(self.prototype_class_identity.shape[1]):
+                proto_ind = torch.nonzero(self.prototype_class_identity[:, cls_i] == 1).flatten()
+                max_cls_activation, _ = torch.max(prototype_activations[:, proto_ind], dim=-1)
+                cls_logits.append(max_cls_activation)
+
+            cls_logits = torch.stack(cls_logits, dim=-1)
+            return cls_logits
+        else:
+            return self.last_layer(prototype_activations)
+
     def conv_features(self, x):
         '''
         the feature input to prototype layer
@@ -247,7 +262,7 @@ class PPNet(nn.Module):
             dist_view = dist_view.view(-1, num_prototypes)
             prototype_activations = self.distance_2_similarity(dist_view)
 
-            logits = self.last_layer(prototype_activations)
+            logits = self.run_last_layer(prototype_activations)
 
             # shape: (batch_size, n_patches_cols, n_patches_rows, num_classes)
             logits = logits.reshape(batch_size, n_patches_cols, n_patches_rows, -1)
@@ -261,7 +276,7 @@ class PPNet(nn.Module):
             # min_distances.shape = (batch_size, num_prototypes)
             min_distances = min_distances.view(-1, self.num_prototypes)
             prototype_activations = self.distance_2_similarity(min_distances)
-            logits = self.last_layer(prototype_activations)
+            logits = self.run_last_layer(prototype_activations)
 
             if return_distances:
                 return logits, min_distances, distances
