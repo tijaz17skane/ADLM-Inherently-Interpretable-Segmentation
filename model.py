@@ -151,22 +151,29 @@ class PPNet(nn.Module):
         self.ones = nn.Parameter(torch.ones(self.prototype_shape),
                                  requires_grad=False)
 
-        self.last_layer = nn.Linear(self.num_prototypes, self.num_classes,
-                                    bias=False)  # do not use bias
+        if hasattr(self, 'nearest_proto_only') and self.nearest_proto_only:
+            self.last_layer = nn.Linear(self.num_classes, self.num_classes,
+                                        bias=False)  # do not use bias
+        else:
+            self.last_layer = nn.Linear(self.num_prototypes, self.num_classes,
+                                        bias=False)  # do not use bias
 
         if init_weights:
             self._initialize_weights()
 
     def run_last_layer(self, prototype_activations):
-        if self.nearest_proto_only:
+        if hasattr(self, 'nearest_proto_only') and self.nearest_proto_only:
             cls_logits = []
             for cls_i in range(self.prototype_class_identity.shape[1]):
                 proto_ind = torch.nonzero(self.prototype_class_identity[:, cls_i] == 1).flatten()
-                max_cls_activation, _ = torch.max(prototype_activations[:, proto_ind], dim=-1)
+                if len(proto_ind) == 0:
+                    max_cls_activation = torch.zeros(prototype_activations.shape[0],
+                                                     device=prototype_activations.device)
+                else:
+                    max_cls_activation, _ = torch.max(prototype_activations[:, proto_ind], dim=-1)
                 cls_logits.append(max_cls_activation)
-
             cls_logits = torch.stack(cls_logits, dim=-1)
-            return cls_logits
+            return self.last_layer(cls_logits)
         else:
             return self.last_layer(prototype_activations)
 
@@ -305,9 +312,10 @@ class PPNet(nn.Module):
 
         # changing self.last_layer in place
         # changing in_features and out_features make sure the numbers are consistent
-        self.last_layer.in_features = self.num_prototypes
-        self.last_layer.out_features = self.num_classes
-        self.last_layer.weight.data = self.last_layer.weight.data[:, prototypes_to_keep]
+        if not (hasattr(self, 'nearest_proto_only') and self.nearest_proto_only):
+            self.last_layer.in_features = self.num_prototypes
+            self.last_layer.out_features = self.num_classes
+            self.last_layer.weight.data = self.last_layer.weight.data[:, prototypes_to_keep]
 
         # self.ones is nn.Parameter
         self.ones = nn.Parameter(self.ones.data[prototypes_to_keep, ...],
@@ -341,11 +349,16 @@ class PPNet(nn.Module):
         '''
         the incorrect strength will be actual strength if -0.5 then input -0.5
         '''
-        positive_one_weights_locations = torch.t(self.prototype_class_identity)
-        negative_one_weights_locations = 1 - positive_one_weights_locations
-
-        correct_class_connection = 1
         incorrect_class_connection = incorrect_strength
+        correct_class_connection = 1
+
+        if hasattr(self, 'nearest_proto_only') and self.nearest_proto_only:
+            positive_one_weights_locations = torch.eye(self.num_classes)
+            negative_one_weights_locations = torch.zeros(self.num_classes)
+        else:
+            positive_one_weights_locations = torch.t(self.prototype_class_identity)
+            negative_one_weights_locations = 1 - positive_one_weights_locations
+
         self.last_layer.weight.data.copy_(
             correct_class_connection * positive_one_weights_locations
             + incorrect_class_connection * negative_one_weights_locations)

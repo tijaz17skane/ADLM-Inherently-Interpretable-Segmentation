@@ -207,7 +207,11 @@ class PatchClassificationModule(LightningModule):
         output_class = torch.argmax(output, dim=-1)
         is_correct = output_class == target
 
-        l1_mask = 1 - torch.t(prototype_class_identity)
+        if hasattr(self.ppnet, 'patch_classification') and self.ppnet.patch_classification:
+            l1_mask = 1 - torch.eye(self.ppnet.num_classes, device=self.device)
+        else:
+            l1_mask = 1 - torch.t(prototype_class_identity)
+
         l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
 
         # calculate 'prototype distance cost' - we want to punish near prototypes within same class
