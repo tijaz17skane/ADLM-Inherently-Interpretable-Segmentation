@@ -20,7 +20,7 @@ train.start_checkpoint = ''
 
 train.warmup_steps = 0
 train.joint_steps = 80000 # should be equivalent to 20000 batches of size 20
-train.warmup_batch_size = 4
+train.warmup_batch_size = 5
 train.joint_batch_size = 5
 
 PatchClassificationDataset.mean = [0.485, 0.456, 0.406]
