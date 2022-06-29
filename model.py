@@ -273,22 +273,22 @@ class PPNet(nn.Module):
 
         # MCS
         if isinstance(conv_features, list):
-            return [self.forward_from_conv_features(c) for c in conv_features]
+            return [self.forward_from_conv_features(c, **kwargs) for c in conv_features]
 
         return self.forward_from_conv_features(conv_features, **kwargs)
 
-    def forward_with_features(self, x):
+    def forward_with_features(self, x, **kwargs):
         conv_features = self.conv_features(x)
 
         # MCS
         if isinstance(conv_features, list):
-            results = [self.forward_from_conv_features(c) for c in conv_features]
+            results = [self.forward_from_conv_features(c, **kwargs) for c in conv_features]
             return [(r[0], r[1], c) for r, c in zip(results, conv_features)]
 
-        logits, distances = self.forward_from_conv_features(conv_features)
+        logits, distances = self.forward_from_conv_features(conv_features, **kwargs)
         return logits, distances, conv_features
 
-    def forward_from_conv_features(self, conv_features, return_distances=False):
+    def forward_from_conv_features(self, conv_features, return_activations=False, return_distances=False):
         if isinstance(conv_features, list):
             return [self.forward_from_conv_features(c) for c in conv_features]
 
@@ -308,6 +308,9 @@ class PPNet(nn.Module):
 
             # shape: (batch_size, n_patches_cols, n_patches_rows, num_classes)
             logits = logits.reshape(batch_size, n_patches_cols, n_patches_rows, -1)
+
+            if return_activations:
+                return logits, prototype_activations
 
             return logits, distances
         else:

@@ -184,7 +184,7 @@ class PatchClassificationModule(LightningModule):
             target = target.flatten()
 
             patch_distances = patch_distances.permute(0, 2, 3, 1)
-            patch_distances = patch_distances.reshape(-1, patch_distances.shape[-1])  # (n_pixels x n_protos)
+            patch_distances = patch_distances.reshape(-1, patch_distances.shape[-1])
 
             if self.ignore_void_class:
                 # do not predict label for void class (0)
@@ -198,20 +198,29 @@ class PatchClassificationModule(LightningModule):
                 target.long(),
             )
 
-            # calculate KLD distance between prototypes from same class
-            prototype_distributions = torch.nn.functional.log_softmax(patch_distances, dim=0)
+            # calculate KLD over class pixels between prototypes from same class
             kld_loss = []
-            for cls_i in range(self.ppnet.num_classes):
+            for cls_i in torch.unique(target).cpu().detach().numpy():
                 cls_protos = torch.nonzero(self.ppnet.prototype_class_identity[:, cls_i]).\
                     flatten().cpu().detach().numpy()
                 if len(cls_protos) < 2:
                     continue
 
+                cls_mask = (target == cls_i)
+                cls_activations = [torch.masked_select(patch_distances[:, i], cls_mask) for i in cls_protos]
+
+                if len(cls_activations[0]) < 2:
+                    # no distribution over given class
+                    continue
+
+                cls_activations = [torch.nn.functional.log_softmax(act, dim=0) for act in cls_activations]
+
                 cls_kld = []
-                for i, p1 in enumerate(cls_protos):
-                    p1_scores = prototype_distributions[:, p1]
-                    for p2 in cls_protos[i+1:]:
-                        p2_scores = prototype_distributions[:, p2]
+                for i in range(len(cls_protos)):
+                    p1_scores = cls_activations[i]
+                    for j in range(i+1, len(cls_protos)):
+                        p2_scores = cls_activations[j]
+
                         # add kld1 and kld2 to make 'symmetrical kld'
                         kld1 = torch.nn.functional.kl_div(p1_scores, p2_scores, log_target=True, reduction='sum')
                         kld2 = torch.nn.functional.kl_div(p2_scores, p1_scores, log_target=True, reduction='sum')
