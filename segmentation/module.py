@@ -2,7 +2,7 @@
 Pytorch Lightning Module for training prototype segmentation model on Cityscapes and SUN datasets
 """
 import os
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Dict, Optional
 
 import gin
@@ -11,6 +11,8 @@ import torch.nn.functional as F
 from pytorch_lightning import LightningModule
 import numpy as np
 
+from deeplab_pytorch.libs.utils import PolynomialLR
+from segmentation.utils import get_params
 from helpers import list_of_distances
 from model import PPNet
 from segmentation.dataset import resize_label
@@ -29,9 +31,10 @@ def reset_metrics() -> Dict:
         'n_batches': 0,
         'n_patches': 0,
         'cross_entropy': 0,
-        'cluster_cost': 0,
-        'separation': 0,
-        'proto_dist_cost': 0,
+        'kld_loss': 0,
+        # 'cluster_cost': 0,
+        # 'separation': 0,
+        # 'proto_dist_cost': 0,
         'loss': 0,
     }
 
@@ -52,6 +55,7 @@ class PatchClassificationModule(LightningModule):
             loss_weight_sep: float = gin.REQUIRED,
             loss_weight_proto_dist: float = 0.0,
             loss_weight_l1: float = gin.REQUIRED,
+            loss_weight_kld: float = 0.0,
             joint_optimizer_lr_features: float = gin.REQUIRED,
             joint_optimizer_lr_add_on_layers: float = gin.REQUIRED,
             joint_optimizer_lr_prototype_vectors: float = gin.REQUIRED,
@@ -65,6 +69,7 @@ class PatchClassificationModule(LightningModule):
             prototype_rebalance_every: int = gin.REQUIRED,
             ignore_void_class: bool = False,
             randomize_all_below_threshold: bool = False,
+            iter_size: int = 1,
     ):
         super().__init__()
         self.model_dir = model_dir
@@ -93,6 +98,8 @@ class PatchClassificationModule(LightningModule):
         self.prototype_initialization_method = prototype_initialization_method
         self.ignore_void_class = ignore_void_class
         self.randomize_all_below_threshold = randomize_all_below_threshold
+        self.iter_size = iter_size
+        self.loss_weight_kld = loss_weight_kld
 
         os.makedirs(self.prototypes_dir, exist_ok=True)
         os.makedirs(self.checkpoints_dir, exist_ok=True)
@@ -136,146 +143,177 @@ class PatchClassificationModule(LightningModule):
             'proto_class_patches_total': Counter(),
             'patches_nearest_prototypes': Counter()
         }
+        self.lr_scheduler = None
+        self.iter_steps = 0
+        self.batch_metrics = defaultdict(list)
 
     def forward(self, x):
         return self.ppnet(x)
 
     def _step(self, split_key: str, batch):
+        optimizer = self.optimizers()
+        if split_key == 'train' and self.iter_steps == 0:
+            optimizer.zero_grad()
+
         if self.start_step is None:
             self.start_step = self.trainer.global_step
 
-        self.ppnet.features.freeze_bn()
+        self.ppnet.features.base.freeze_bn()
         prototype_class_identity = self.ppnet.prototype_class_identity.to(self.device)
 
         metrics = self.metrics[split_key]
 
-        image, target = batch
+        image, mcs_target = batch
 
-        image = image.to(self.device)
-        target = target.to(self.device).to(torch.float32)
-        output, patch_distances = self.ppnet.forward(image)
+        image = image.to(self.device).to(torch.float32)
+        mcs_target = mcs_target.cpu().detach().numpy().astype(np.float32)
 
-        # resize targets
-        target = target.cpu().detach().numpy()
-        resized_targets = []
-        for sample_target in target:
-            sample_target = resize_label(sample_target, size=(output.shape[2], output.shape[1]))
-            resized_targets.append(sample_target)
-        target = np.stack(resized_targets, axis=0)
-        target = torch.tensor(target, device=output.device)
+        mcs_model_outputs = self.ppnet.forward(image)
+        if not isinstance(mcs_model_outputs, list):
+            mcs_model_outputs = [mcs_model_outputs]
 
-        # we flatten target/output - classification is done per patch
-        output = output.reshape(-1, output.shape[-1])
-        target = target.flatten()
+        mcs_loss, mcs_cross_entropy, mcs_kld_loss = 0.0, 0.0, 0.0
+        for output, patch_distances in mcs_model_outputs:
+            target = []
+            for sample_target in mcs_target:
+                target.append(resize_label(sample_target, size=(output.shape[2], output.shape[1])).to(self.device))
+            target = torch.stack(target, dim=0)
 
-        patch_distances = patch_distances.permute(0, 2, 3, 1)
-        patch_distances = patch_distances.reshape(-1, patch_distances.shape[-1])  # (n_pixels x n_protos)
+            # we flatten target/output - classification is done per patch
+            output = output.reshape(-1, output.shape[-1])
+            target = target.flatten()
 
-        if self.ignore_void_class:
-            # do not predict label for void class (0)
-            target_not_void = (target != 0).nonzero().squeeze()
-            target = target[target_not_void] - 1
-            output = output[target_not_void]
-            patch_distances = patch_distances[target_not_void]
+            patch_distances = patch_distances.permute(0, 2, 3, 1)
+            patch_distances = patch_distances.reshape(-1, patch_distances.shape[-1])  # (n_pixels x n_protos)
 
-        cross_entropy = torch.nn.functional.cross_entropy(
-            output,
-            target.long(),
-        )
+            if self.ignore_void_class:
+                # do not predict label for void class (0)
+                target_not_void = (target != 0).nonzero().squeeze()
+                target = target[target_not_void] - 1
+                output = output[target_not_void]
+                patch_distances = patch_distances[target_not_void]
 
-        max_dist = (self.ppnet.prototype_shape[1]
-                    * self.ppnet.prototype_shape[2]
-                    * self.ppnet.prototype_shape[3])
+            cross_entropy = torch.nn.functional.cross_entropy(
+                output,
+                target.long(),
+            )
 
-        # calculate cluster cost
-        prototypes_of_correct_class = torch.t(torch.index_select(
-            prototype_class_identity,
-            dim=-1,
-            index=target.long()
-        )).to(self.device)
+            # calculate KLD distance between prototypes from same class
+            prototype_distributions = torch.nn.functional.log_softmax(patch_distances, dim=0)
+            kld_loss = []
+            for cls_i in range(self.ppnet.num_classes):
+                cls_protos = torch.nonzero(self.ppnet.prototype_class_identity[:, cls_i]).\
+                    flatten().cpu().detach().numpy()
+                if len(cls_protos) < 2:
+                    continue
 
-        inverted_distances, _ = torch.max((max_dist - patch_distances) * prototypes_of_correct_class, dim=1)
-        cluster_cost = torch.mean(max_dist - inverted_distances)
+                cls_kld = []
+                for i, p1 in enumerate(cls_protos):
+                    p1_scores = prototype_distributions[:, p1]
+                    for p2 in cls_protos[i+1:]:
+                        p2_scores = prototype_distributions[:, p2]
+                        # add kld1 and kld2 to make 'symmetrical kld'
+                        kld1 = torch.nn.functional.kl_div(p1_scores, p2_scores, log_target=True, reduction='sum')
+                        kld2 = torch.nn.functional.kl_div(p2_scores, p1_scores, log_target=True, reduction='sum')
+                        kld = (kld1 + kld2) / 2.0
+                        cls_kld.append(kld)
 
-        # calculate separation cost
-        prototypes_of_wrong_class = 1 - prototypes_of_correct_class
-        inverted_distances_to_nontarget_prototypes, _ = \
-            torch.max((max_dist - patch_distances) * prototypes_of_wrong_class, dim=1)
+                # select minimum KLD divergence over prototypes from same class
+                cls_kld = torch.min(torch.stack(cls_kld))
+                kld_loss.append(cls_kld)
 
-        separation = torch.mean(max_dist - inverted_distances_to_nontarget_prototypes)
+            # to make 'loss' (lower == better) take exponent of the negative (maximum value is 1.0, for KLD == 0.0
+            kld_loss = torch.stack(kld_loss)
+            kld_loss = torch.exp(-kld_loss)
+            kld_loss = torch.mean(kld_loss)
 
-        output_class = torch.argmax(output, dim=-1)
-        is_correct = output_class == target
+            # TODO: temporarily commented out to save time and RAM
+            # max_dist = (self.ppnet.prototype_shape[1]
+            # * self.ppnet.prototype_shape[2]
+            # * self.ppnet.prototype_shape[3])
 
-        if hasattr(self.ppnet, 'nearest_proto_only') and self.ppnet.nearest_proto_only:
-            l1_mask = 1 - torch.eye(self.ppnet.num_classes, device=self.device)
-        else:
-            l1_mask = 1 - torch.t(prototype_class_identity)
+            # calculate cluster cost
+            # prototypes_of_correct_class = torch.t(torch.index_select(
+            # prototype_class_identity,
+            # dim=-1,
+            # index=target.long()
+            # )).to(self.device)
 
-        l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
+            # inverted_distances, _ = torch.max((max_dist - patch_distances) * prototypes_of_correct_class, dim=1)
+            # cluster_cost = torch.mean(max_dist - inverted_distances)
 
-        # calculate 'prototype distance cost' - we want to punish near prototypes within same class
-        # prototype_class_identity.shape = (num_prototypes, self.num_classes)
-        # prototype_vectors.shape = (num_prototypes, hidden)
+            # calculate separation cost
+            # prototypes_of_wrong_class = 1 - prototypes_of_correct_class
+            # inverted_distances_to_nontarget_prototypes, _ = \
+            # torch.max((max_dist - patch_distances) * prototypes_of_wrong_class, dim=1)
 
-        prototype_vectors = torch.reshape(self.ppnet.prototype_vectors, (self.ppnet.num_prototypes, -1))
+            # separation = torch.mean(max_dist - inverted_distances_to_nontarget_prototypes)
 
-        proto_dist_cost = []
+            output_class = torch.argmax(output, dim=-1)
+            is_correct = output_class == target
 
-        for cls_i in range(self.ppnet.num_classes):
-            cls_prototypes = prototype_vectors[self.cls_prototypes[cls_i]]
-            if len(cls_prototypes) <= 1:
-                continue
-            pair_distances = torch.cdist(cls_prototypes, cls_prototypes)
+            if hasattr(self.ppnet, 'nearest_proto_only') and self.ppnet.nearest_proto_only:
+                l1_mask = 1 - torch.eye(self.ppnet.num_classes, device=self.device)
+            else:
+                l1_mask = 1 - torch.t(prototype_class_identity)
+
+            l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
+
+            # calculate 'prototype distance cost' - we want to punish near prototypes within same class
+            # prototype_class_identity.shape = (num_prototypes, self.num_classes)
+            # prototype_vectors.shape = (num_prototypes, hidden)
+
+            # prototype_vectors = torch.reshape(self.ppnet.prototype_vectors, (self.ppnet.num_prototypes, -1))
+
+            # proto_dist_cost = []
+
+            # for cls_i in range(self.ppnet.num_classes):
+            # cls_prototypes = prototype_vectors[self.cls_prototypes[cls_i]]
+            # if len(cls_prototypes) <= 1:
+            # continue
+            # pair_distances = torch.cdist(cls_prototypes, cls_prototypes)
 
             # mask duplicate pairs and distances of a prototype to itself
-            mask_value = 10e6
-            pair_distances = pair_distances + torch.triu(torch.full_like(pair_distances, fill_value=mask_value))
-            pair_distances = pair_distances.flatten()
-            pair_distances = pair_distances[pair_distances < mask_value]
+            # mask_value = 10e6
+            # pair_distances = pair_distances + torch.triu(torch.full_like(pair_distances, fill_value=mask_value))
+            # pair_distances = pair_distances.flatten()
+            # pair_distances = pair_distances[pair_distances < mask_value]
 
-            pairwise_loss = torch.max(torch.exp(-pair_distances))
-            proto_dist_cost.append(pairwise_loss)
+            # pairwise_loss = torch.max(torch.exp(-pair_distances))
+            # proto_dist_cost.append(pairwise_loss)
 
-        proto_dist_cost = torch.mean(torch.stack(proto_dist_cost))
+            # proto_dist_cost = torch.mean(torch.stack(proto_dist_cost))
 
-        loss = (self.loss_weight_crs_ent * cross_entropy +
-                self.loss_weight_clst * cluster_cost +
-                self.loss_weight_sep * separation +
-                self.loss_weight_proto_dist * proto_dist_cost +
-                self.loss_weight_l1 * l1)
-        loss_value = loss.item()
+            loss = (self.loss_weight_crs_ent * cross_entropy +
+                    # self.loss_weight_clst * cluster_cost +
+                    # self.loss_weight_sep * separation +
+                    # self.loss_weight_proto_dist * proto_dist_cost +
+                    self.loss_weight_kld * kld_loss +
+                    self.loss_weight_l1 * l1)
 
-        metrics['loss'] += loss_value
-        metrics['cross_entropy'] += cross_entropy.item()
-        metrics['cluster_cost'] += cluster_cost.item()
-        metrics['separation'] += separation.item()
-        metrics['proto_dist_cost'] += proto_dist_cost.item()
-        metrics['n_correct'] += torch.sum(is_correct)
-        metrics['n_patches'] += output.shape[0]
-        metrics['n_batches'] += 1
+            mcs_loss += loss
+            mcs_cross_entropy += cross_entropy
+            mcs_kld_loss += kld_loss
+            metrics['n_correct'] += torch.sum(is_correct)
+            metrics['n_patches'] += output.shape[0]
+
+        self.batch_metrics['loss'].append(mcs_loss.item())
+        self.batch_metrics['cross_entropy'].append(mcs_cross_entropy.item())
+        self.batch_metrics['kld_loss'].append(mcs_kld_loss.item())
+        self.iter_steps += 1
 
         if split_key == 'train':
-            optimizer = self.optimizers()
-            optimizer.zero_grad()
-            self.manual_backward(loss)
-            optimizer.step()
+            self.manual_backward(mcs_loss / self.iter_size)
 
-            self.log('train_loss_step', loss_value, on_step=True, prog_bar=True)
+            if self.iter_steps == self.iter_size:
+                self.iter_steps = 0
+                optimizer.step()
+
+                if self.lr_scheduler is not None:
+                    self.lr_scheduler.step()
 
             lr = get_lr(optimizer)
             self.log('lr', lr, on_step=True)
-
-            # LR scheduler
-            if self.training_phase != 2:  # LR scheduler is not used in last layer fine-tuning
-                if self.optimizer_defaults is None:
-                    self.optimizer_defaults = []
-                    for pg in optimizer.param_groups:
-                        self.optimizer_defaults.append(pg['lr'])
-
-                for default, pg in zip(self.optimizer_defaults, optimizer.param_groups):
-                    pg['lr'] = ((1 - (self.trainer.global_step - self.start_step) /
-                                 self.max_steps) ** self.poly_lr_power) * default
 
             if self.prototype_rebalancing is not None:
                 with torch.no_grad():
@@ -295,6 +333,18 @@ class PatchClassificationModule(LightningModule):
                                     (nearest_patch_prototypes == proto_num) & is_pred_cls
                                 ).item()
                                 self.rebalancing_stats['proto_class_patches_total'][proto_num] += total_cls_pixels
+        elif self.iter_steps == self.iter_size:
+            self.iter_steps = 0
+
+        if self.iter_steps == 0:
+            for key, values in self.batch_metrics.items():
+                mean_value = float(np.mean(self.batch_metrics[key]))
+                metrics[key] += mean_value
+                if key == 'loss':
+                    self.log('train_loss_step', mean_value, on_step=True, prog_bar=True)
+            metrics['n_batches'] += 1
+
+            self.batch_metrics = defaultdict(list)
 
     def rebalance_prototypes(self):
         total_cls_patches = self.rebalancing_stats['proto_class_patches_total']
@@ -419,7 +469,7 @@ class PatchClassificationModule(LightningModule):
             self.metrics[split_key] = reset_metrics()
 
         # Freeze the pre-trained batch norm
-        self.ppnet.features.freeze_bn()
+        self.ppnet.features.base.freeze_bn()
 
     def on_validation_epoch_end(self):
         val_acc = (self.metrics['val']['n_correct'] / self.metrics['val']['n_patches']).item()
@@ -451,9 +501,18 @@ class PatchClassificationModule(LightningModule):
 
     def _epoch_end(self, split_key: str):
         metrics = self.metrics[split_key]
+        if len(self.batch_metrics) > 0:
+            for key, values in self.batch_metrics.items():
+                mean_value = float(np.mean(self.batch_metrics[key]))
+                metrics[key] += mean_value
+            metrics['n_batches'] += 1
+
         n_batches = metrics['n_batches']
 
-        for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation', 'proto_dist_cost']:
+        self.batch_metrics = defaultdict(list)
+
+        # for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation', 'proto_dist_cost']:
+        for key in ['loss', 'cross_entropy', 'kld_loss']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         self.log(f'{split_key}/accuracy', metrics['n_correct'] / metrics['n_patches'])
@@ -478,14 +537,14 @@ class PatchClassificationModule(LightningModule):
     def configure_optimizers(self):
         if self.training_phase == 0:  # warmup
             aspp_params = [
-                self.ppnet.features.aspp.c0.weight,
-                self.ppnet.features.aspp.c0.bias,
-                self.ppnet.features.aspp.c1.weight,
-                self.ppnet.features.aspp.c1.bias,
-                self.ppnet.features.aspp.c2.weight,
-                self.ppnet.features.aspp.c2.bias,
-                self.ppnet.features.aspp.c3.weight,
-                self.ppnet.features.aspp.c3.bias
+                self.ppnet.features.base.aspp.c0.weight,
+                self.ppnet.features.base.aspp.c0.bias,
+                self.ppnet.features.base.aspp.c1.weight,
+                self.ppnet.features.base.aspp.c1.bias,
+                self.ppnet.features.base.aspp.c2.weight,
+                self.ppnet.features.base.aspp.c2.bias,
+                self.ppnet.features.base.aspp.c3.weight,
+                self.ppnet.features.base.aspp.c3.bias
             ]
             optimizer_specs = \
                 [
@@ -503,8 +562,18 @@ class PatchClassificationModule(LightningModule):
             optimizer_specs = \
                 [
                     {
-                        'params': self.ppnet.features.parameters(),
+                        "params": get_params(self.ppnet.features, key="1x"),
                         'lr': self.joint_optimizer_lr_features,
+                        'weight_decay': self.joint_optimizer_weight_decay
+                    },
+                    {
+                        "params": get_params(self.ppnet.features, key="10x"),
+                        'lr': 10 * self.joint_optimizer_lr_features,
+                        'weight_decay': self.joint_optimizer_weight_decay
+                    },
+                    {
+                        "params": get_params(self.ppnet.features, key="20x"),
+                        'lr': 20 * self.joint_optimizer_lr_features,
                         'weight_decay': self.joint_optimizer_weight_decay
                     },
                     {
@@ -524,4 +593,16 @@ class PatchClassificationModule(LightningModule):
                     'lr': self.last_layer_optimizer_lr
                 }
             ]
-        return torch.optim.Adam(optimizer_specs)
+
+        optimizer = torch.optim.SGD(optimizer_specs,
+                                    momentum=0.9)
+
+        if self.training_phase == 0 or self.training_phase == 1:
+            self.lr_scheduler = PolynomialLR(
+                optimizer=optimizer,
+                step_size=10,
+                iter_max=self.max_steps // self.iter_size,
+                power=self.poly_lr_power
+            )
+
+        return optimizer

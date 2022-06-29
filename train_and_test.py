@@ -155,14 +155,14 @@ def last_only(model, log=print):
 
 def warm_only(model, log=print):
     aspp_params = [
-        model.features.aspp.c0.weight,
-        model.features.aspp.c0.bias,
-        model.features.aspp.c1.weight,
-        model.features.aspp.c1.bias,
-        model.features.aspp.c2.weight,
-        model.features.aspp.c2.bias,
-        model.features.aspp.c3.weight,
-        model.features.aspp.c3.bias
+        model.features.base.aspp.c0.weight,
+        model.features.base.aspp.c0.bias,
+        model.features.base.aspp.c1.weight,
+        model.features.base.aspp.c1.bias,
+        model.features.base.aspp.c2.weight,
+        model.features.base.aspp.c2.bias,
+        model.features.base.aspp.c3.weight,
+        model.features.base.aspp.c3.bias
     ]
 
     if hasattr(model, 'module'):

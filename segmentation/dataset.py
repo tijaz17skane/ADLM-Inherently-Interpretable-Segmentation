@@ -4,6 +4,7 @@ Dataset for training prototype patch classification model on Cityscapes and SUN 
 import json
 from typing import Any, List, Optional, Tuple
 
+import cv2
 from PIL import Image
 
 import torch
@@ -11,6 +12,7 @@ from torchvision.datasets import VisionDataset
 from torchvision import transforms
 import os
 import gin
+import random
 
 from segmentation.constants import CITYSCAPES_19_EVAL_CATEGORIES, PASCAL_ID_MAPPING
 from settings import data_path, log
@@ -29,7 +31,9 @@ def resize_label(label, size):
     return torch.LongTensor(np.asarray(label))
 
 
-@gin.configurable(allowlist=['mean', 'std', 'image_margin_size', 'window_size', 'only_19_from_cityscapes'])
+@gin.configurable(allowlist=['mean', 'std', 'image_margin_size',
+                             'window_size', 'only_19_from_cityscapes',
+                             'scales'])
 class PatchClassificationDataset(VisionDataset):
     def __init__(
             self,
@@ -40,8 +44,8 @@ class PatchClassificationDataset(VisionDataset):
             std: List[float] = gin.REQUIRED,
             image_margin_size: int = gin.REQUIRED,
             window_size: Optional[Tuple[int, int]] = None,
-            only_19_from_cityscapes: bool = False
-
+            only_19_from_cityscapes: bool = False,
+            scales: List[int] = [1.0],
     ):
         self.mean = mean
         self.std = std
@@ -52,6 +56,7 @@ class PatchClassificationDataset(VisionDataset):
         self.image_margin_size = image_margin_size
         self.window_size = window_size
         self.only_19_from_cityscapes = only_19_from_cityscapes
+        self.scales = scales
 
         if self.only_19_from_cityscapes:
             self.convert_targets = np.vectorize(CITYSCAPES_19_EVAL_CATEGORIES.get)
@@ -90,97 +95,72 @@ class PatchClassificationDataset(VisionDataset):
     def __getitem__(self, index: int) -> Any:
         img_id = self.img_ids[index]
         img_path = os.path.join(self.img_dir, img_id + '.npy')
-        ann_path = os.path.join(self.annotations_dir, img_id + '.npy')
-        img = np.load(img_path)
-        ann = np.load(ann_path)
+        label_path = os.path.join(self.annotations_dir, img_id + '.npy')
 
-        if ann.ndim == 3:
-            ann = ann[:, :, 0]
+        image = np.load(img_path).astype(np.uint8)
+        label = np.load(label_path)
+
+        if label.ndim == 3:
+            label = label[:, :, 0]
 
         if self.convert_targets is not None:
-            ann = self.convert_targets(ann)
-
-        full_ann = np.full((img.shape[0], img.shape[1]), fill_value=-1)
+            label = self.convert_targets(label)
+        label = label.astype(np.int32)
 
         if self.image_margin_size != 0:
-            full_ann[self.image_margin_size:-self.image_margin_size,
-            self.image_margin_size:-self.image_margin_size] = ann
+            image = image[self.image_margin_size:-self.image_margin_size,
+                          self.image_margin_size:-self.image_margin_size]
 
-            # insert class for mirrored margin
-            full_ann[:self.image_margin_size, :] = np.flip(
-                full_ann[self.image_margin_size:2 * self.image_margin_size, :],
-                axis=0)
-            full_ann[-self.image_margin_size:, :] = np.flip(
-                full_ann[-2 * self.image_margin_size:-self.image_margin_size, :],
-                axis=0)
+        h, w = label.shape
 
-            full_ann[:, :self.image_margin_size] = np.flip(
-                full_ann[:, self.image_margin_size:2 * self.image_margin_size],
-                axis=1)
-            full_ann[:, -self.image_margin_size:] = np.flip(
-                full_ann[:, -2 * self.image_margin_size:-self.image_margin_size],
-                axis=1)
+        scale_factor = random.choice(self.scales)
+        h, w = (int(h * scale_factor), int(w * scale_factor))
+        image = cv2.resize(image, (w, h), interpolation=cv2.INTER_LINEAR)
 
-            full_ann[:self.image_margin_size, :self.image_margin_size] = np.flip(
-                full_ann[self.image_margin_size:2 * self.image_margin_size,
-                self.image_margin_size:2 * self.image_margin_size],
-                axis=None)
-            full_ann[-self.image_margin_size:, -self.image_margin_size:] = np.flip(
-                full_ann[-2 * self.image_margin_size:-self.image_margin_size,
-                -2 * self.image_margin_size:-self.image_margin_size],
-                axis=None)
+        label = Image.fromarray(label).resize((w, h), resample=Image.NEAREST)
+        label = np.asarray(label, dtype=np.int64)
 
-            full_ann[-self.image_margin_size:, :self.image_margin_size] = np.flip(
-                full_ann[-2 * self.image_margin_size:-self.image_margin_size,
-                self.image_margin_size:2 * self.image_margin_size],
-                axis=None)
-            full_ann[:self.image_margin_size, -self.image_margin_size:] = np.flip(
-                full_ann[self.image_margin_size:2 * self.image_margin_size,
-                -2 * self.image_margin_size:-self.image_margin_size],
-                axis=None)
+        # [0-255] to [0-1]
+        image = image / 255.0
 
-            img = img[self.image_margin_size:-self.image_margin_size,
-                      self.image_margin_size:-self.image_margin_size]
-            target = full_ann[self.image_margin_size:-self.image_margin_size,
-                              self.image_margin_size:-self.image_margin_size]
-        else:
-            target = ann
+        # Padding to fit for crop_size
+        h, w = label.shape
+        pad_h = max(self.window_size[0] - h, 0)
+        pad_w = max(self.window_size[1] - w, 0)
+        pad_kwargs = {
+            "top": 0,
+            "bottom": pad_h,
+            "left": 0,
+            "right": pad_w,
+            "borderType": cv2.BORDER_CONSTANT,
+        }
+        if pad_h > 0 or pad_w > 0:
+            image = cv2.copyMakeBorder(image, value=self.mean, **pad_kwargs)
+            label = cv2.copyMakeBorder(label, value=0, **pad_kwargs)
 
-        img = torch.tensor(img).permute(2, 0, 1) / 256
+        # Cropping
+        h, w = label.shape
+        start_h = random.randint(0, h - self.window_size[0])
+        start_w = random.randint(0, w - self.window_size[1])
+        end_h = start_h + self.window_size[0]
+        end_w = start_w + self.window_size[1]
+        image = image[start_h:end_h, start_w:end_w]
+        label = label[start_h:end_h, start_w:end_w]
 
-        if not self.is_eval:
-            scale = np.random.uniform(0.5, 1.5)
-            window_size = int(np.round(scale * self.window_size[0])), int(np.round(scale * self.window_size[1]))
-            window_size = min(window_size[0], target.shape[0]), min(window_size[1], target.shape[1])
-        else:
-            window_size = self.window_size
+        # Random flipping
+        if random.random() < 0.5:
+            image = np.fliplr(image).copy()  # HWC
+            label = np.fliplr(label).copy()  # HW
 
-        window_size = min(window_size[0], target.shape[0]), min(window_size[1], target.shape[1])
-
-        window_left = np.random.randint(0, target.shape[0] - window_size[0]+1)
-        window_top = np.random.randint(0, target.shape[1] - window_size[1]+1)
-        window_right = window_left + window_size[0]
-        window_bottom = window_top + window_size[1]
-
-        img = img[:, window_left:window_right, window_top:window_bottom]
-        target = target[window_left:window_right, window_top:window_bottom]
-
-        # Random horizontal flip
-        if not self.is_eval and np.random.random() > 0.5:
-            target = np.flip(target, axis=1)
-            img = torch.flip(img, [2])
+        image = torch.tensor(image)
+        # HWC -> CHW
+        image = image.permute(2, 0, 1)
+        label = torch.tensor(label)
 
         if self.transform is not None:
-            img = self.transform(img)
+            image = self.transform(image)
         if self.target_transform is not None:
-            target = self.target_transform(target)
+            label = self.target_transform(label)
 
-        if img.shape[1] != self.window_size[0] or img.shape[2] != self.window_size[1]:
-            img = torch.nn.functional.interpolate(img.unsqueeze(0), size=(self.window_size[0], self.window_size[1]),
-                                                  mode='bilinear', align_corners=False)[0]
+        return image, label
 
-        target = Image.fromarray(target.astype(float)).\
-            resize((self.window_size[1], self.window_size[0]), resample=Image.NEAREST)
-        target = np.asarray(target)
-
-        return img, target

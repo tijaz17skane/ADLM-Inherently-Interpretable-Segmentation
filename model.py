@@ -92,8 +92,11 @@ class PPNet(nn.Module):
         elif features_name.startswith('DEEPLAB'):
             first_add_on_layer_in_channels = \
                 [i for i in features.modules() if isinstance(i, nn.Conv2d)][-2].out_channels
+        elif features_name.startswith('MSC'):
+            first_add_on_layer_in_channels = \
+                [i for i in features.base.modules() if isinstance(i, nn.Conv2d)][-2].out_channels
         else:
-            raise Exception('other base base_architecture NOT implemented')
+            raise Exception(f'{features_name[:10]} base_architecture NOT implemented')
 
         add_on_layers = []
 
@@ -195,6 +198,11 @@ class PPNet(nn.Module):
         the feature input to prototype layer
         '''
         x = self.features(x)
+
+        # multi-scale training (MCS)
+        if isinstance(x, list):
+            return [self.add_on_layers(x_scaled) for x_scaled in x]
+
         x = self.add_on_layers(x)
         return x
 
@@ -262,14 +270,28 @@ class PPNet(nn.Module):
 
     def forward(self, x, **kwargs):
         conv_features = self.conv_features(x)
+
+        # MCS
+        if isinstance(conv_features, list):
+            return [self.forward_from_conv_features(c) for c in conv_features]
+
         return self.forward_from_conv_features(conv_features, **kwargs)
 
     def forward_with_features(self, x):
         conv_features = self.conv_features(x)
+
+        # MCS
+        if isinstance(conv_features, list):
+            results = [self.forward_from_conv_features(c) for c in conv_features]
+            return [(r[0], r[1], c) for r, c in zip(results, conv_features)]
+
         logits, distances = self.forward_from_conv_features(conv_features)
         return logits, distances, conv_features
 
     def forward_from_conv_features(self, conv_features, return_distances=False):
+        if isinstance(conv_features, list):
+            return [self.forward_from_conv_features(c) for c in conv_features]
+
         # distances.shape = (batch_size, num_prototypes, n_patches_cols, n_patches_rows)
         distances = self._l2_convolution(conv_features)
 
@@ -306,6 +328,10 @@ class PPNet(nn.Module):
     def push_forward(self, x):
         '''this method is needed for the pushing operation'''
         conv_output = self.conv_features(x)
+
+        if isinstance(conv_output, list):
+            return [(c, self._l2_convolution(c)) for c in conv_output]
+
         distances = self._l2_convolution(conv_output)
         return conv_output, distances
 

@@ -1,6 +1,7 @@
 from typing import Optional
 import gin
 
+from deeplab_pytorch.libs.models import MSC
 from deeplab_pytorch.libs.models.deeplabv2 import DeepLabV2
 
 
@@ -48,9 +49,12 @@ def torchvision_resnet_weight_key_to_deeplab2(key: str) -> Optional[str]:
     return None
 
 
-@gin.configurable(allowlist=['deeplab_n_features'])
-def deeplabv2_resnet101_features(pretrained=False, deeplab_n_features: int = gin.REQUIRED, **kwargs):
-    model = DeepLabV2(
-        n_classes=deeplab_n_features, n_blocks=[3, 4, 23, 3], atrous_rates=[6, 12, 18, 24]
+@gin.configurable(allowlist=['deeplab_n_features', 'scales'])
+def deeplabv2_resnet101_features(pretrained=False, deeplab_n_features: int = gin.REQUIRED,
+                                 scales=[1.0], **kwargs):
+    return MSC(
+        base=DeepLabV2(
+            n_classes=deeplab_n_features, n_blocks=[3, 4, 23, 3], atrous_rates=[6, 12, 18, 24]
+        ),
+        scales=scales,
     )
-    return model

@@ -45,6 +45,7 @@ def train(
         warmup_batch_size: int = gin.REQUIRED,
         joint_batch_size: int = gin.REQUIRED,
         prototype_rebalancing_start: Optional[int] = gin.REQUIRED,
+        load_coco: bool = False
 ):
     seed_everything(random_seed)
 
@@ -67,21 +68,31 @@ def train(
         ppnet = construct_PPNet()
 
     if not pre_loaded:
-        # load weights from Resnet pretrained on ImageNet
-        resnet_state_dict = torchvision.models.resnet101(pretrained=True).state_dict()
-        new_state_dict = {}
-        for k, v in resnet_state_dict.items():
-            new_key = torchvision_resnet_weight_key_to_deeplab2(k)
-            if new_key is not None:
-                new_state_dict[new_key] = v
+        if load_coco:
+            log('Loading COCO pretrained weights')
+            state_dict = torch.load('deeplab_pytorch/data/models/coco/deeplabv1_resnet101/'
+                                    'caffemodel/deeplabv1_resnet101-coco.pth')
+            load_result = ppnet.features.base.load_state_dict(state_dict, strict=False)
+            log(f'Loaded {len(state_dict)} weights from pretrained COCO')
 
-        load_result = ppnet.features.load_state_dict(new_state_dict, strict=False)
+            assert len(load_result.missing_keys) == 8  # ASPP layer (has different shape)
+            assert len(load_result.unexpected_keys) == 2  # final FC for COCO
+        else:
+            # load weights from Resnet pretrained on ImageNet
+            resnet_state_dict = torchvision.models.resnet101(pretrained=True).state_dict()
+            new_state_dict = {}
+            for k, v in resnet_state_dict.items():
+                new_key = torchvision_resnet_weight_key_to_deeplab2(k)
+                if new_key is not None:
+                    new_state_dict[new_key] = v
+
+            load_result = ppnet.features.base.load_state_dict(new_state_dict, strict=False)
+            log(f'Loaded {len(new_state_dict)} weights from pretrained ResNet101')
+
+            assert len(load_result.missing_keys) == 8  # ASPP layer (has different shape)
+            assert len(load_result.unexpected_keys) == 0
+
         log(str(load_result))
-
-        assert len(load_result.missing_keys) == 8  # ASPP layer
-        assert len(load_result.unexpected_keys) == 0
-
-        log(f'Loaded {len(new_state_dict)} weights from pretrained ResNet101')
 
     logs_dir = os.path.join(results_dir, 'logs')
     os.makedirs(os.path.join(logs_dir, 'tb'), exist_ok=True)
@@ -140,9 +151,10 @@ def train(
             current_epoch = -1
 
         last_checkpoint = os.path.join(results_dir, 'checkpoints/warmup_last.pth')
-        log(f'Loading model after warmup from {last_checkpoint}')
-        ppnet = torch.load(last_checkpoint)
-        ppnet = ppnet.cuda()
+        if os.path.exists(last_checkpoint):
+            log(f'Loading model after warmup from {last_checkpoint}')
+            ppnet = torch.load(last_checkpoint)
+            ppnet = ppnet.cuda()
 
         data_module = PatchClassificationDataModule(batch_size=joint_batch_size)
         module = PatchClassificationModule(
@@ -173,8 +185,7 @@ def train(
             prototype_network_parallel=ppnet,
             prototype_layer_stride=1,
             root_dir_for_saving_prototypes=module.prototypes_dir,
-            epoch_number=current_epoch,
-            # epoch_number=trainer.current_epoch,
+            epoch_number=trainer.current_epoch,
             prototype_img_filename_prefix='prototype-img',
             prototype_self_act_filename_prefix='prototype-self-act',
             proto_bound_boxes_filename_prefix='bb',
