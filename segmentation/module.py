@@ -528,7 +528,7 @@ class PatchClassificationModule(LightningModule):
         return self._epoch_end('train')
 
     def validation_epoch_end(self, step_outputs):
-        p = self.ppnet.prototype_vectors.view(self.ppnet.num_prototypes, -1).cpu()
+        p = self.ppnet.prototype_vectors.view(self.ppnet.prototype_vectors.shape[0], -1).cpu()
         with torch.no_grad():
             p_avg_pair_dist = torch.mean(list_of_distances(p, p))
         self.log('p dist pair', p_avg_pair_dist.item())

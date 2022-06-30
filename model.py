@@ -48,14 +48,13 @@ class PPNet(nn.Module):
 
         super(PPNet, self).__init__()
         self.img_size = img_size
-        self.prototype_shape = prototype_shape
-        self.num_prototypes = prototype_shape[0]
-        self.num_classes = num_classes
         self.epsilon = 1e-4
         self.bottleneck_stride = bottleneck_stride
         self.patch_classification = patch_classification
         self.nearest_proto_only = nearest_proto_only
         self.gumbel_tau = 0.5  # TODO make configurable, add annealing
+
+        self.prototype_vectors = nn.Parameter(torch.rand(prototype_shape), requires_grad=True)
 
         # prototype_activation_function could be 'log', 'linear',
         # or a generic function that converts distance to similarity score
@@ -66,15 +65,15 @@ class PPNet(nn.Module):
         Without domain specific knowledge we allocate the same number of
         prototypes for each class
         '''
-        assert self.num_prototypes % self.num_classes == 0
-
         # a onehot indication matrix for each prototype's class identity
         self.prototype_class_identity = torch.zeros(self.num_prototypes,
-                                                    self.num_classes)
+                                                    num_classes)
 
         num_prototypes_per_class = self.num_prototypes // self.num_classes
         for i in range(self.num_classes):
             self.prototype_class_identity[i * num_prototypes_per_class:(i + 1) * num_prototypes_per_class, i] = 1
+
+        assert self.num_prototypes % self.num_classes == 0
 
         self.num_prototypes_per_class = num_prototypes_per_class
         self.proto_layer_rf_info = proto_layer_rf_info
@@ -148,8 +147,6 @@ class PPNet(nn.Module):
                 nn.Sigmoid()
             )
 
-        self.prototype_vectors = nn.Parameter(torch.rand(self.prototype_shape), requires_grad=True)
-
         # do not make this just a tensor,
         # since it will not be moved automatically to gpu
         self.ones = nn.Parameter(torch.ones(self.prototype_shape),
@@ -164,6 +161,18 @@ class PPNet(nn.Module):
 
         if init_weights:
             self._initialize_weights()
+
+    @property
+    def prototype_shape(self):
+        return self.prototype_vectors.shape[1]
+
+    @property
+    def num_prototypes(self):
+        return self.prototype_vectors.shape[0]
+
+    @property
+    def num_classes(self):
+        return self.prototype_class_identity.shape[1]
 
     def run_last_layer(self, prototype_activations):
         if hasattr(self, 'nearest_proto_only') and self.nearest_proto_only:
