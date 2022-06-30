@@ -131,7 +131,7 @@ def train(
             neptune_run['config'] = json_gin_config
 
         shutil.copy(f'segmentation/configs/{config_path}.gin', os.path.join(results_dir, 'config.gin'))
-        
+
         if warmup_steps > 0:
             data_module = PatchClassificationDataModule(batch_size=warmup_batch_size)
             module = PatchClassificationModule(
@@ -185,11 +185,11 @@ def train(
             prototype_network_parallel=ppnet,
             prototype_layer_stride=1,
             root_dir_for_saving_prototypes=module.prototypes_dir,
-            epoch_number=trainer.current_epoch,
             prototype_img_filename_prefix='prototype-img',
             prototype_self_act_filename_prefix='prototype-self-act',
             proto_bound_boxes_filename_prefix='bb',
             save_prototype_class_identity=True,
+            pascal=not push_dataset.only_19_from_cityscapes,
             log=log
         )
     else:

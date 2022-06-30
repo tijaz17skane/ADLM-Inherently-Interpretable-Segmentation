@@ -12,6 +12,8 @@ from torchvision import transforms
 
 from find_nearest import to_normalized_tensor
 from helpers import makedir, find_continuous_high_activation_crop
+from segmentation.constants import PASCAL_ID_MAPPING, PASCAL_CATEGORIES, CITYSCAPES_19_EVAL_CATEGORIES, \
+    CITYSCAPES_CATEGORIES
 
 from segmentation.dataset import PatchClassificationDataset
 
@@ -29,7 +31,18 @@ def push_prototypes(dataset: PatchClassificationDataset,
                     proto_bound_boxes_filename_prefix=None,
                     save_prototype_class_identity=True,  # which class the prototype image comes from
                     log=print,
+                    pascal=False,
                     prototype_activation_function_in_numpy=None):
+    
+    ID_MAPPING = PASCAL_ID_MAPPING if pascal else CITYSCAPES_19_EVAL_CATEGORIES
+    CATEGORIES = PASCAL_CATEGORIES if pascal else CITYSCAPES_CATEGORIES
+
+    cls2name = {k - 1: i for i, k in ID_MAPPING.items() if k > 0}
+    if pascal:
+        cls2name = {i: CATEGORIES[k+1] for i, k in cls2name.items() if k < len(CATEGORIES)-1}
+    else:
+        cls2name = {i: CATEGORIES[k] for i, k in cls2name.items()}
+
     if hasattr(prototype_network_parallel, 'module'):
         prototype_network_parallel = prototype_network_parallel.module
 
@@ -111,6 +124,7 @@ def push_prototypes(dataset: PatchClassificationDataset,
                                        global_min_fmap_patches,
                                        proto_rf_boxes,
                                        proto_bound_boxes,
+                                       cls2name=cls2name,
                                        img_y=gt_ann,
                                        num_classes=num_classes,
                                        prototype_layer_stride=prototype_layer_stride,
@@ -154,6 +168,7 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                                global_min_fmap_patches,  # this will be updated
                                proto_rf_boxes,  # this will be updated
                                proto_bound_boxes,  # this will be updated
+                               cls2name,
                                img_y=None,  # required if class_specific == True
                                num_classes=None,  # required if class_specific == True
                                prototype_layer_stride=1,
@@ -310,6 +325,14 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
             proto_img_j = original_img_j[proto_bound_j[0]:proto_bound_j[1],
                           proto_bound_j[2]:proto_bound_j[3], :]
 
+            # find high activation *only* on ground truth
+            threshold_gt = np.percentile(upsampled_act_img_j[y_mask], 95)
+            proto_bound_j_gt = find_continuous_high_activation_crop(upsampled_act_img_j_gt, rf_prototype_j[1:],
+                                                                    threshold=threshold_gt)
+            # crop out the image patch with high activation as prototype image
+            proto_img_j_gt = original_img_j[proto_bound_j_gt[0]:proto_bound_j_gt[1],
+                                            proto_bound_j_gt[2]:proto_bound_j_gt[3], :]
+
             # save the prototype boundary (rectangular boundary of highly activated region)
             proto_bound_boxes[j, 0] = proto_rf_boxes[j, 0]
             proto_bound_boxes[j, 1] = proto_bound_j[0]
@@ -329,16 +352,20 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
             5: (optional) class identity
             '''
             if dir_for_saving_prototypes is not None:
+                cls_name = cls2name[target_class]
+                dir_for_saving_prototypes_cls = os.path.join(dir_for_saving_prototypes, cls_name)
+                os.makedirs(dir_for_saving_prototypes_cls, exist_ok=True)
+
                 if prototype_self_act_filename_prefix is not None:
                     # save the numpy array of the prototype self activation
-                    np.save(os.path.join(dir_for_saving_prototypes,
+                    np.save(os.path.join(dir_for_saving_prototypes_cls,
                                          prototype_self_act_filename_prefix + str(j) + '.npy'),
                             proto_act_img_j)
                 if prototype_img_filename_prefix is not None:
                     # save the whole image containing the prototype as png
 
                     # save the whole image containing the prototype as png
-                    plt.imsave(os.path.join(dir_for_saving_prototypes,
+                    plt.imsave(os.path.join(dir_for_saving_prototypes_cls,
                                             prototype_img_filename_prefix + f'_{j}-original.png'),
                                original_img_j,
                                vmin=0.0,
@@ -357,7 +384,7 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                     plt.subplots_adjust(top=1, bottom=0, right=1, left=0,
                                         hspace=0, wspace=0)
                     plt.margins(0, 0)
-                    plt.savefig(os.path.join(dir_for_saving_prototypes,
+                    plt.savefig(os.path.join(dir_for_saving_prototypes_cls,
                                              prototype_img_filename_prefix + f'_{j}-original_with_box.png'))
                     plt.close()
 
@@ -370,7 +397,7 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                     heatmap_gt = heatmap_gt[..., ::-1]
 
                     overlayed_original_img_j_gt = 0.5 * original_img_j + 0.3 * heatmap_gt
-                    plt.imsave(os.path.join(dir_for_saving_prototypes,
+                    plt.imsave(os.path.join(dir_for_saving_prototypes_cls,
                                             prototype_img_filename_prefix + f'_{j}-original_with_self_act_gt_only.png'),
                                overlayed_original_img_j_gt,
                                vmin=0.0,
@@ -385,7 +412,7 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                     heatmap = heatmap[..., ::-1]
 
                     overlayed_original_img_j = 0.5 * original_img_j + 0.3 * heatmap
-                    plt.imsave(os.path.join(dir_for_saving_prototypes,
+                    plt.imsave(os.path.join(dir_for_saving_prototypes_cls,
                                             prototype_img_filename_prefix + f'_{j}-original_with_self_act.png'),
                                overlayed_original_img_j,
                                vmin=0.0,
@@ -402,19 +429,19 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                     plt.subplots_adjust(top=1, bottom=0, right=1, left=0,
                                         hspace=0, wspace=0)
                     plt.margins(0, 0)
-                    plt.savefig(os.path.join(dir_for_saving_prototypes,
+                    plt.savefig(os.path.join(dir_for_saving_prototypes_cls,
                                              prototype_img_filename_prefix + f'_{j}-original_with_self_act_and_box.png'))
                     plt.close()
 
                     if img_y.ndim > 2:
-                        plt.imsave(os.path.join(dir_for_saving_prototypes,
+                        plt.imsave(os.path.join(dir_for_saving_prototypes_cls,
                                                 prototype_img_filename_prefix + f'_{j}-receptive_field.png'),
                                    rf_img_j,
                                    vmin=0.0,
                                    vmax=1.0)
                         overlayed_rf_img_j = overlayed_original_img_j[rf_prototype_j[1]:rf_prototype_j[2],
                                              rf_prototype_j[3]:rf_prototype_j[4]]
-                        plt.imsave(os.path.join(dir_for_saving_prototypes,
+                        plt.imsave(os.path.join(dir_for_saving_prototypes_cls,
                                                 prototype_img_filename_prefix
                                                 + f'_{j}-receptive_field_with_self_act.png'),
                                    overlayed_rf_img_j,
@@ -422,9 +449,16 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                                    vmax=1.0)
 
                     # save the prototype image (highly activated region of the whole image)
-                    plt.imsave(os.path.join(dir_for_saving_prototypes,
+                    plt.imsave(os.path.join(dir_for_saving_prototypes_cls,
                                             prototype_img_filename_prefix + f'_{j}.png'),
                                proto_img_j,
+                               vmin=0.0,
+                               vmax=1.0)
+
+                    # save the prototype image (highly activated region of the whole image)
+                    plt.imsave(os.path.join(dir_for_saving_prototypes_cls,
+                                            prototype_img_filename_prefix + f'_{j}_gt.png'),
+                               proto_img_j_gt,
                                vmin=0.0,
                                vmax=1.0)
 
