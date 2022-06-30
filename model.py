@@ -164,7 +164,7 @@ class PPNet(nn.Module):
 
     @property
     def prototype_shape(self):
-        return self.prototype_vectors.shape[1]
+        return self.prototype_vectors.shape
 
     @property
     def num_prototypes(self):
