@@ -45,7 +45,7 @@ class PatchClassificationDataset(VisionDataset):
             image_margin_size: int = gin.REQUIRED,
             window_size: Optional[Tuple[int, int]] = None,
             only_19_from_cityscapes: bool = False,
-            scales: List[int] = [1.0],
+            scales: Tuple[int] = (1.0, ),
     ):
         self.mean = mean
         self.std = std
@@ -113,7 +113,10 @@ class PatchClassificationDataset(VisionDataset):
 
         h, w = label.shape
 
-        scale_factor = random.choice(self.scales)
+        if len(self.scales) < 2:
+            scale_factor = 1.0
+        else:
+            scale_factor = random.uniform(self.scales[0], self.scales[1])
         h, w = (int(h * scale_factor), int(w * scale_factor))
         image = cv2.resize(image, (w, h), interpolation=cv2.INTER_LINEAR)
 
