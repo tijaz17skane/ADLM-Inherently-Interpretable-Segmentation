@@ -1,7 +1,7 @@
 from typing import Optional
 import gin
 
-from deeplab_pytorch.libs.models import MSC
+from segmentation.utils import MSC
 from deeplab_pytorch.libs.models.deeplabv2 import DeepLabV2
 
 
