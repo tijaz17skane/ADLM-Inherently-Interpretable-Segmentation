@@ -215,7 +215,6 @@ class PatchClassificationModule(LightningModule):
 
                 cls_activations = [torch.nn.functional.log_softmax(act, dim=0) for act in cls_activations]
 
-                cls_kld = []
                 for i in range(len(cls_protos)):
                     p1_scores = cls_activations[i]
                     for j in range(i+1, len(cls_protos)):
@@ -225,14 +224,10 @@ class PatchClassificationModule(LightningModule):
                         kld1 = torch.nn.functional.kl_div(p1_scores, p2_scores, log_target=True, reduction='sum')
                         kld2 = torch.nn.functional.kl_div(p2_scores, p1_scores, log_target=True, reduction='sum')
                         kld = (kld1 + kld2) / 2.0
-                        cls_kld.append(kld)
+                        kld_loss.append(kld)
 
-                # select minimum KLD divergence over prototypes from same class
-                cls_kld = torch.min(torch.stack(cls_kld))
-                kld_loss.append(cls_kld)
-
-            # to make 'loss' (lower == better) take exponent of the negative (maximum value is 1.0, for KLD == 0.0
             kld_loss = torch.stack(kld_loss)
+            # to make 'loss' (lower == better) take exponent of the negative (maximum value is 1.0, for KLD == 0.0)
             kld_loss = torch.exp(-kld_loss)
             kld_loss = torch.mean(kld_loss)
 

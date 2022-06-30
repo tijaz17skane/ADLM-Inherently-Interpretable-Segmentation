@@ -19,7 +19,7 @@ train.early_stopping_patience_last_layer = 20
 train.start_checkpoint = ''
 
 train.warmup_steps = 0
-train.joint_steps = 80000 # should be equivalent to 20000 batches of size 20
+train.joint_steps = 40000 # 20000 real batches
 train.warmup_batch_size = 5
 train.joint_batch_size = 5
 
@@ -30,7 +30,7 @@ PatchClassificationDataset.window_size = (321, 321)
 PatchClassificationDataset.only_19_from_cityscapes = False
 PatchClassificationDataset.scales = [0.5, 0.75, 1.0, 1.25, 1.5]
 
-PatchClassificationDataModule.dataloader_n_jobs = 4
+PatchClassificationDataModule.dataloader_n_jobs = 32
 PatchClassificationDataModule.train_key = 'train_aug'
 
 PatchClassificationModule.loss_weight_crs_ent = 1.0
@@ -52,7 +52,7 @@ PatchClassificationModule.last_layer_optimizer_lr = 1e-5
 
 PatchClassificationModule.ignore_void_class = True
 PatchClassificationModule.poly_lr_power = 0.9
-PatchClassificationModule.iter_size = 4
+PatchClassificationModule.iter_size = 2
 
 # rebalancing OFF
 train.prototype_rebalancing_start = None
