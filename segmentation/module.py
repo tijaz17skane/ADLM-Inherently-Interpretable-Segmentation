@@ -295,9 +295,9 @@ class PatchClassificationModule(LightningModule):
                     self.loss_weight_kld * kld_loss +
                     self.loss_weight_l1 * l1)
 
-            mcs_loss += loss
-            mcs_cross_entropy += cross_entropy
-            mcs_kld_loss += kld_loss
+            mcs_loss += loss / len(mcs_model_outputs)
+            mcs_cross_entropy += cross_entropy / len(mcs_model_outputs)
+            mcs_kld_loss += kld_loss / len(mcs_model_outputs)
             metrics['n_correct'] += torch.sum(is_correct)
             metrics['n_patches'] += output.shape[0]
 
@@ -577,7 +577,7 @@ class PatchClassificationModule(LightningModule):
                     },
                     {
                         "params": get_params(self.ppnet.features, key="20x"),
-                        'lr': 20 * self.joint_optimizer_lr_features,
+                        'lr': 10 * self.joint_optimizer_lr_features,
                         'weight_decay': self.joint_optimizer_weight_decay
                     },
                     {
@@ -598,13 +598,12 @@ class PatchClassificationModule(LightningModule):
                 }
             ]
 
-        optimizer = torch.optim.SGD(optimizer_specs,
-                                    momentum=0.9)
+        optimizer = torch.optim.Adam(optimizer_specs)
 
-        if self.training_phase == 0 or self.training_phase == 1:
+        if self.training_phase == 1:
             self.lr_scheduler = PolynomialLR(
                 optimizer=optimizer,
-                step_size=10,
+                step_size=1,
                 iter_max=self.max_steps // self.iter_size,
                 power=self.poly_lr_power
             )

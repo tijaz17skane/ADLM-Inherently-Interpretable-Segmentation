@@ -14,11 +14,11 @@ deeplabv2_resnet101_features.deeplab_n_features = 64
 deeplabv2_resnet101_features.scales = []
 
 train.random_seed = 20220227
-train.load_coco = True
+train.load_coco = False
 train.early_stopping_patience_last_layer = 20
 train.start_checkpoint = ''
 
-train.warmup_steps = 50
+train.warmup_steps = 50000
 train.joint_steps = 200000 # 40000 real batches
 train.warmup_batch_size = 2
 train.joint_batch_size = 2
@@ -37,7 +37,7 @@ PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_clst = 0.0
 PatchClassificationModule.loss_weight_sep = 0.0
 PatchClassificationModule.loss_weight_l1 = 1e-4
-PatchClassificationModule.loss_weight_kld = 0.0
+PatchClassificationModule.loss_weight_kld = 0.2
 
 PatchClassificationModule.joint_optimizer_lr_features = 2.5e-5
 PatchClassificationModule.joint_optimizer_lr_add_on_layers = 2.5e-4

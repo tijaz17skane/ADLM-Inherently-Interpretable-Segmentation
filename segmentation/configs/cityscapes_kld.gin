@@ -18,10 +18,10 @@ train.load_coco = True
 train.early_stopping_patience_last_layer = 20
 train.start_checkpoint = ''
 
-train.warmup_steps = 0
-train.joint_steps = 80000 # 40000 real batches
-train.warmup_batch_size = 5
-train.joint_batch_size = 5
+train.warmup_steps = 50000
+train.joint_steps = 200000 # 40000 real batches
+train.warmup_batch_size = 2
+train.joint_batch_size = 2
 
 PatchClassificationDataset.mean = [0.485, 0.456, 0.406]
 PatchClassificationDataset.std = [0.229, 0.224, 0.225]
@@ -30,29 +30,29 @@ PatchClassificationDataset.window_size = (513, 513)
 PatchClassificationDataset.only_19_from_cityscapes = True
 PatchClassificationDataset.scales = (0.5, 1.5)
 
-PatchClassificationDataModule.dataloader_n_jobs = 32
+PatchClassificationDataModule.dataloader_n_jobs = 8
 PatchClassificationDataModule.train_key = 'train'
 
 PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_clst = 0.0
 PatchClassificationModule.loss_weight_sep = 0.0
 PatchClassificationModule.loss_weight_l1 = 1e-4
-PatchClassificationModule.loss_weight_kld = 0.1
+PatchClassificationModule.loss_weight_kld = 0.2
 
-PatchClassificationModule.joint_optimizer_lr_features = 2.5e-4
-PatchClassificationModule.joint_optimizer_lr_add_on_layers = 2.5e-3
-PatchClassificationModule.joint_optimizer_lr_prototype_vectors = 2.5e-3
+PatchClassificationModule.joint_optimizer_lr_features = 2.5e-5
+PatchClassificationModule.joint_optimizer_lr_add_on_layers = 2.5e-4
+PatchClassificationModule.joint_optimizer_lr_prototype_vectors = 2.5e-4
 PatchClassificationModule.joint_optimizer_weight_decay = 5e-4
 
-PatchClassificationModule.warm_optimizer_lr_add_on_layers = 2.5e-3
-PatchClassificationModule.warm_optimizer_lr_prototype_vectors = 2.5e-3
+PatchClassificationModule.warm_optimizer_lr_add_on_layers = 2.5e-4
+PatchClassificationModule.warm_optimizer_lr_prototype_vectors = 2.5e-4
 PatchClassificationModule.warm_optimizer_weight_decay = 5e-4
 
 PatchClassificationModule.last_layer_optimizer_lr = 1e-5
 
 PatchClassificationModule.ignore_void_class = True
 PatchClassificationModule.poly_lr_power = 0.9
-PatchClassificationModule.iter_size = 2
+PatchClassificationModule.iter_size = 5
 
 # rebalancing OFF
 train.prototype_rebalancing_start = None
