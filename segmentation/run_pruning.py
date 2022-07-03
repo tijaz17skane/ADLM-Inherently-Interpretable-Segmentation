@@ -18,7 +18,7 @@ def run_pruning(config_name: str, experiment_name: str, k: int = 6, prune_thresh
     gin.parse_config_file(os.path.join(os.environ['RESULTS_DIR'], experiment_name, 'config.gin'),
                           skip_unknown=True)
 
-    model_path = os.path.join(os.environ['RESULTS_DIR'], experiment_name, 'checkpoints/push_best.pth')
+    model_path = os.path.join(os.environ['RESULTS_DIR'], experiment_name, 'checkpoints/push_last.pth')
     output_dir = os.path.join(os.environ['RESULTS_DIR'], experiment_name, 'pruned')
 
     os.makedirs(output_dir, exist_ok=True)

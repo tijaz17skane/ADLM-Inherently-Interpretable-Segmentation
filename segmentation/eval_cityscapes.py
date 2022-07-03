@@ -11,6 +11,7 @@ from torch.nn import functional as F
 from torchvision import transforms
 
 from segmentation import train
+from tqdm import tqdm
 from segmentation.dataset import resize_label
 from segmentation.constants import CITYSCAPES_CATEGORIES, CITYSCAPES_19_EVAL_CATEGORIES, \
     PASCAL_CATEGORIES, PASCAL_ID_MAPPING
@@ -42,6 +43,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
     ])
 
     img_dir = os.path.join(data_path, f'img_with_margin_{margin}/val')
+
     all_img_files = [p for p in os.listdir(img_dir) if p.endswith('.npy')]
 
     ann_dir = os.path.join(data_path, 'annotations/val')
@@ -59,7 +61,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
     proto_ident = ppnet.prototype_class_identity.cpu().detach().numpy()
     mean_top_k = np.zeros(proto_ident.shape[0], dtype=float)
 
-    RESULTS_DIR = os.path.join(model_path, f'evaluation/notebook_plots/{training_phase}')
+    RESULTS_DIR = os.path.join(model_path, f'evaluation/{training_phase}')
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
     CLS_CONVERT = np.vectorize(ID_MAPPING.get)
@@ -109,7 +111,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
             all_cls_distances[class_i])
         axes[class_i].set_title(f'{class_name}\nmin: {d_min:.2f} avg: {d_avg:.2f} max: {d_max:.2f}')
 
-    for i in range(class_i, len(axes)):
+    for i in range(class_i+1, len(axes)):
         axes[i].axis('off')
 
     plt.tight_layout()
@@ -126,7 +128,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
     correct_pixels, total_pixels = 0, 0
 
     with torch.no_grad():
-        for batch_img_files in batched_img_files:
+        for batch_img_files in tqdm(batched_img_files, desc='evaluating'):
             img_tensors = []
             anns = []
 
@@ -202,14 +204,14 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
                     mean_top_k[k] += nearest_k * 100 / n_random_pixels
 
     pixel_accuracy = correct_pixels / total_pixels * 100
-    reverse_cat_dict = {v: k for k, v in ID_MAPPING.items()}
 
     CLS_IOU = {cls_i + 1: (CLS_I[cls_i] * 100) / u for cls_i, u in CLS_U.items() if u > 0}
     mean_iou = np.mean(list(CLS_IOU.values()))
+
     keys = list(sorted(CLS_IOU.keys()))
 
     vals = [CLS_IOU[k] for k in keys]
-    keys = [CATEGORIES[reverse_cat_dict[cls_i]] for cls_i in keys]
+    keys = [pred2name[cls_i] for cls_i in keys]
 
     plt.figure(figsize=(15, 5))
     xticks = np.arange(len(keys))
@@ -222,6 +224,9 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
     with open(os.path.join(RESULTS_DIR, 'iou_scores.json'), 'w') as fp:
         json.dump(CLS_IOU, fp)
+
+    with open(os.path.join(RESULTS_DIR, 'mean_iou.txt'), 'w') as fp:
+        fp.write(str(mean_iou))
 
     plt.figure(figsize=(10, 5))
     plt.title(
@@ -256,7 +261,8 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
     N_SAMPLES = 20
     DPI = 100
 
-    for example_i, img_file in enumerate(np.random.choice(all_img_files, size=N_SAMPLES, replace=False)):
+    for example_i, img_file in tqdm(enumerate(np.random.choice(all_img_files, size=N_SAMPLES, replace=False)),
+                                    total=N_SAMPLES, desc='nearest prototype visualization'):
         img = np.load(os.path.join(img_dir, img_file)).astype(np.uint8)
 
         ann = np.load(os.path.join(ann_dir, img_file))
@@ -307,8 +313,8 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
         plt.savefig(os.path.join(RESULTS_DIR, f'example_{example_i}_prediction.png'))
 
         # show only one example in notebook
-        if example_i == 0:
-            plt.show()
+        # if example_i == 0:
+            # plt.show()
         plt.close()
 
         plt.figure(figsize=(img.shape[1] / DPI, img.shape[0] / DPI))
