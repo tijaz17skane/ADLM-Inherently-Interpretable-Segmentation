@@ -32,6 +32,7 @@ def reset_metrics() -> Dict:
         'n_patches': 0,
         'cross_entropy': 0,
         'kld_loss': 0,
+        'cls_act_loss': 0,
         # 'cluster_cost': 0,
         # 'separation': 0,
         # 'proto_dist_cost': 0,
@@ -56,6 +57,7 @@ class PatchClassificationModule(LightningModule):
             loss_weight_proto_dist: float = 0.0,
             loss_weight_l1: float = gin.REQUIRED,
             loss_weight_kld: float = 0.0,
+            loss_weight_cls_act: float = 0.0,
             joint_optimizer_lr_features: float = gin.REQUIRED,
             joint_optimizer_lr_add_on_layers: float = gin.REQUIRED,
             joint_optimizer_lr_prototype_vectors: float = gin.REQUIRED,
@@ -100,6 +102,7 @@ class PatchClassificationModule(LightningModule):
         self.randomize_all_below_threshold = randomize_all_below_threshold
         self.iter_size = iter_size
         self.loss_weight_kld = loss_weight_kld
+        self.loss_weight_cls_act = loss_weight_cls_act
 
         os.makedirs(self.prototypes_dir, exist_ok=True)
         os.makedirs(self.checkpoints_dir, exist_ok=True)
@@ -168,12 +171,12 @@ class PatchClassificationModule(LightningModule):
         image = image.to(self.device).to(torch.float32)
         mcs_target = mcs_target.cpu().detach().numpy().astype(np.float32)
 
-        mcs_model_outputs = self.ppnet.forward(image)
+        mcs_model_outputs = self.ppnet.forward(image, return_activations=True)
         if not isinstance(mcs_model_outputs, list):
             mcs_model_outputs = [mcs_model_outputs]
 
-        mcs_loss, mcs_cross_entropy, mcs_kld_loss = 0.0, 0.0, 0.0
-        for output, patch_distances in mcs_model_outputs:
+        mcs_loss, mcs_cross_entropy, mcs_kld_loss, mcs_cls_act_loss = 0.0, 0.0, 0.0, 0.0
+        for output, patch_activations in mcs_model_outputs:
             target = []
             for sample_target in mcs_target:
                 target.append(resize_label(sample_target, size=(output.shape[2], output.shape[1])).to(self.device))
@@ -183,15 +186,15 @@ class PatchClassificationModule(LightningModule):
             output = output.reshape(-1, output.shape[-1])
             target = target.flatten()
 
-            patch_distances = patch_distances.permute(0, 2, 3, 1)
-            patch_distances = patch_distances.reshape(-1, patch_distances.shape[-1])
+            # patch_activations = patch_activations.permute(0, 2, 3, 1)
+            # patch_activations = patch_activations.reshape(-1, patch_activations.shape[-1])
 
             if self.ignore_void_class:
                 # do not predict label for void class (0)
                 target_not_void = (target != 0).nonzero().squeeze()
                 target = target[target_not_void] - 1
                 output = output[target_not_void]
-                patch_distances = patch_distances[target_not_void]
+                patch_activations = patch_activations[target_not_void]
 
             cross_entropy = torch.nn.functional.cross_entropy(
                 output,
@@ -200,29 +203,39 @@ class PatchClassificationModule(LightningModule):
 
             # calculate KLD over class pixels between prototypes from same class
             kld_loss = []
+            cls_act_loss = []
+            eps = 1e-9
             for cls_i in torch.unique(target).cpu().detach().numpy():
-                cls_protos = torch.nonzero(self.ppnet.prototype_class_identity[:, cls_i]).\
+                cls_protos = torch.nonzero(self.ppnet.prototype_class_identity[:, cls_i]). \
                     flatten().cpu().detach().numpy()
-                if len(cls_protos) < 2:
+                if len(cls_protos) == 0:
                     continue
 
                 cls_mask = (target == cls_i)
-                cls_activations = [torch.masked_select(patch_distances[:, i], cls_mask) for i in cls_protos]
 
-                if len(cls_activations[0]) < 2:
-                    # no distribution over given class
-                    continue
+                cls_activations = [torch.masked_select(patch_activations[:, i], cls_mask) for i in cls_protos]
+                non_cls_activations = [torch.masked_select(patch_activations[:, i], ~cls_mask) for i in cls_protos]
 
-                cls_activations = [torch.nn.functional.log_softmax(act, dim=0) for act in cls_activations]
+                log_cls_activations = [torch.nn.functional.log_softmax(act, dim=0) for act in cls_activations]
 
                 for i in range(len(cls_protos)):
-                    p1_scores = cls_activations[i]
-                    for j in range(i+1, len(cls_protos)):
-                        p2_scores = cls_activations[j]
+                    cls_class_act_loss = (torch.mean(non_cls_activations[i]) /
+                                          (torch.mean(cls_activations[i]) + eps)) ** 2
+                    cls_act_loss.append(cls_class_act_loss)
+
+                    if len(cls_protos) < 2 or len(cls_activations[0]) < 2:
+                        # no distribution over given class
+                        continue
+
+                    log_p1_scores = log_cls_activations[i]
+                    for j in range(i + 1, len(cls_protos)):
+                        log_p2_scores = log_cls_activations[j]
 
                         # add kld1 and kld2 to make 'symmetrical kld'
-                        kld1 = torch.nn.functional.kl_div(p1_scores, p2_scores, log_target=True, reduction='sum')
-                        kld2 = torch.nn.functional.kl_div(p2_scores, p1_scores, log_target=True, reduction='sum')
+                        kld1 = torch.nn.functional.kl_div(log_p1_scores, log_p2_scores,
+                                                          log_target=True, reduction='sum')
+                        kld2 = torch.nn.functional.kl_div(log_p2_scores, log_p1_scores,
+                                                          log_target=True, reduction='sum')
                         kld = (kld1 + kld2) / 2.0
                         kld_loss.append(kld)
 
@@ -230,6 +243,8 @@ class PatchClassificationModule(LightningModule):
             # to make 'loss' (lower == better) take exponent of the negative (maximum value is 1.0, for KLD == 0.0)
             kld_loss = torch.exp(-kld_loss)
             kld_loss = torch.mean(kld_loss)
+
+            cls_act_loss = torch.mean(torch.stack(cls_act_loss))
 
             # TODO: temporarily commented out to save time and RAM
             # max_dist = (self.ppnet.prototype_shape[1]
@@ -293,17 +308,20 @@ class PatchClassificationModule(LightningModule):
                     # self.loss_weight_sep * separation +
                     # self.loss_weight_proto_dist * proto_dist_cost +
                     self.loss_weight_kld * kld_loss +
+                    self.loss_weight_cls_act * cls_act_loss +
                     self.loss_weight_l1 * l1)
 
             mcs_loss += loss / len(mcs_model_outputs)
             mcs_cross_entropy += cross_entropy / len(mcs_model_outputs)
             mcs_kld_loss += kld_loss / len(mcs_model_outputs)
+            mcs_cls_act_loss += cls_act_loss / len(mcs_model_outputs)
             metrics['n_correct'] += torch.sum(is_correct)
             metrics['n_patches'] += output.shape[0]
 
         self.batch_metrics['loss'].append(mcs_loss.item())
         self.batch_metrics['cross_entropy'].append(mcs_cross_entropy.item())
         self.batch_metrics['kld_loss'].append(mcs_kld_loss.item())
+        self.batch_metrics['cls_act_loss'].append(mcs_cls_act_loss.item())
         self.iter_steps += 1
 
         if split_key == 'train':
@@ -324,7 +342,7 @@ class PatchClassificationModule(LightningModule):
                     output_class_oh = F.one_hot(output_class, num_classes=self.ppnet.num_classes)
                     output_class_mask = torch.matmul(output_class_oh.float(), self.ppnet.prototype_class_identity.T)
                     # [n_pixels x n_protos]
-                    pred_cls_patch_distances = patch_distances + (1 - output_class_mask) * 10e6
+                    pred_cls_patch_distances = patch_activations + (1 - output_class_mask) * 10e6
                     nearest_patch_prototypes = torch.argmin(pred_cls_patch_distances, dim=1).flatten()
 
                     for cls_num in range(self.ppnet.prototype_class_identity.shape[1]):
@@ -516,7 +534,7 @@ class PatchClassificationModule(LightningModule):
         self.batch_metrics = defaultdict(list)
 
         # for key in ['loss', 'cross_entropy', 'cluster_cost', 'separation', 'proto_dist_cost']:
-        for key in ['loss', 'cross_entropy', 'kld_loss']:
+        for key in ['loss', 'cross_entropy', 'kld_loss', 'cls_act_loss']:
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         self.log(f'{split_key}/accuracy', metrics['n_correct'] / metrics['n_patches'])

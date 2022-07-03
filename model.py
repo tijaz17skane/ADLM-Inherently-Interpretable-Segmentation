@@ -310,7 +310,7 @@ class PPNet(nn.Module):
 
             # shape: (batch_size, n_patches_cols, n_patches_rows, num_prototypes)
             dist_view = distances.permute(0, 2, 3, 1).contiguous()
-            dist_view = dist_view.view(-1, num_prototypes)
+            dist_view = dist_view.reshape(-1, num_prototypes)
             prototype_activations = self.distance_2_similarity(dist_view)
 
             logits = self.run_last_layer(prototype_activations)
