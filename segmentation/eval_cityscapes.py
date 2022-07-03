@@ -21,7 +21,6 @@ from settings import data_path, log
 def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pascal: bool = True,
                    margin: int = 0):
     model_path = os.path.join(os.environ['RESULTS_DIR'], model_name)
-    log(f'Loading model from {model_path}')
     config_path = os.path.join(model_path, 'config.gin')
     gin.parse_config_file(config_path)
 
@@ -30,6 +29,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
     else:
         checkpoint_path = os.path.join(model_path, f'checkpoints/{training_phase}_last.pth')
 
+    log(f'Loading model from {checkpoint_path}')
     ppnet = torch.load(checkpoint_path)  # , map_location=torch.device('cpu'))
     ppnet = ppnet.cuda()
     ppnet.eval()
@@ -214,6 +214,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
     else:
         CLS_IOU = {cls_i + 1: (CLS_I[cls_i] * 100) / u for cls_i, u in CLS_U.items() if u > 0}
     mean_iou = np.mean(list(CLS_IOU.values()))
+    log(f'{model_name} {training_phase} mIOU: {mean_iou}')
 
     keys = list(sorted(CLS_IOU.keys()))
 
