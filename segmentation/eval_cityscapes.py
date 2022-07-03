@@ -139,14 +139,18 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
                 if margin != 0:
                     img = img[margin:-margin, margin:-margin]
-                img_shape = (513, 513)
-                img_tensor = transform(img)
-                img_tensor = torch.nn.functional.interpolate(img_tensor.unsqueeze(0),
-                                                             size=(513, 513), mode='bilinear', align_corners=False)[0]
-                img_tensors.append(img_tensor)
 
-                ann = resize_label(ann, size=(513, 513)).cpu().detach().numpy()
+                if pascal:
+                    img_shape = (513, 513)
+                    img_tensor = transform(img)
+                    img_tensor = torch.nn.functional.interpolate(img_tensor.unsqueeze(0),
+                                                                 size=(513, 513), mode='bilinear', align_corners=False)[0]
+                    ann = resize_label(ann, size=(513, 513)).cpu().detach().numpy()
+                else:
+                    img.shape = (1024, 2048)
+
                 anns.append(ann)
+                img_tensors.append(img_tensor)
 
             anns = np.stack(anns, axis=0)
             img_tensors = torch.stack(img_tensors, dim=0).cuda()
@@ -205,7 +209,10 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
     pixel_accuracy = correct_pixels / total_pixels * 100
 
-    CLS_IOU = {cls_i + 1: (CLS_I[cls_i] * 100) / u for cls_i, u in CLS_U.items() if u > 0}
+    if pascal:
+        CLS_IOU = {cls_i: (CLS_I[cls_i] * 100) / u for cls_i, u in CLS_U.items() if u > 0}
+    else:
+        CLS_IOU = {cls_i + 1: (CLS_I[cls_i] * 100) / u for cls_i, u in CLS_U.items() if u > 0}
     mean_iou = np.mean(list(CLS_IOU.values()))
 
     keys = list(sorted(CLS_IOU.keys()))
@@ -267,20 +274,22 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
         ann = np.load(os.path.join(ann_dir, img_file))
         ann = np.vectorize(ID_MAPPING.get)(ann)
-        ann = resize_label(ann, size=(513, 513)).cpu().detach().numpy()
+
+        if pascal:
+            ann = resize_label(ann, size=(513, 513)).cpu().detach().numpy()
 
         if margin != 0:
             img = img[margin:-margin, margin:-margin]
-        img_shape = (513, 513)
+        img_shape = (513, 513) if pascal else (img.shape[0], img.shape[1])
 
         with torch.no_grad():
             img_tensor = transform(img).unsqueeze(0).cuda()
-            img_tensor = torch.nn.functional.interpolate(img_tensor, size=(513, 513),
+            img_tensor = torch.nn.functional.interpolate(img_tensor, size=img_shape,
                                                          mode='bilinear', align_corners=False)
             logits, distances = ppnet.forward(img_tensor)
 
             img = torch.tensor(img).cuda().permute(2, 0, 1).unsqueeze(0).float()
-            img = torch.nn.functional.interpolate(img, size=(513, 513),
+            img = torch.nn.functional.interpolate(img, size=img_shape,
                                                   mode='bilinear', align_corners=False)
             img = img.cpu().detach().numpy()[0].astype(int)
             img = img.transpose(1, 2, 0)
