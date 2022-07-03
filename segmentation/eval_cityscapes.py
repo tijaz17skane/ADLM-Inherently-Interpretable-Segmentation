@@ -26,7 +26,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
     gin.parse_config_file(config_path)
 
     if training_phase == 'pruned':
-        checkpoint_path = os.path.join(model_path, 'pruned/pruned.pth')
+        checkpoint_path = os.path.join(model_path, 'pruned/checkpoints/push_last.pth')
     else:
         checkpoint_path = os.path.join(model_path, f'checkpoints/{training_phase}_last.pth')
 
