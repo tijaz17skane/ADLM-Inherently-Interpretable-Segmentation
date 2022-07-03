@@ -358,8 +358,8 @@ class PPNet(nn.Module):
         self.prototype_vectors = nn.Parameter(self.prototype_vectors.data[prototypes_to_keep, ...],
                                               requires_grad=True)
 
-        self.prototype_shape = list(self.prototype_vectors.size())
-        self.num_prototypes = self.prototype_shape[0]
+        # self.prototype_shape = list(self.prototype_vectors.size())
+        # self.num_prototypes = self.prototype_shape[0]
 
         # changing self.last_layer in place
         # changing in_features and out_features make sure the numbers are consistent
