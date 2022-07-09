@@ -18,7 +18,7 @@ from segmentation.constants import CITYSCAPES_CATEGORIES, CITYSCAPES_19_EVAL_CAT
 from settings import data_path, log
 
 
-def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pascal: bool = True,
+def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pascal: bool = False,
                    margin: int = 0):
     model_path = os.path.join(os.environ['RESULTS_DIR'], model_name)
     config_path = os.path.join(model_path, 'config.gin')
@@ -142,63 +142,68 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
                 if pascal:
                     img_shape = (513, 513)
-                    img_tensor = transform(img)
-                    img_tensor = torch.nn.functional.interpolate(img_tensor.unsqueeze(0),
-                                                                 size=(513, 513), mode='bilinear', align_corners=False)[0]
-                    ann = resize_label(ann, size=(513, 513)).cpu().detach().numpy()
                 else:
-                    img.shape = (1024, 2048)
+                    img_shape = ann.shape
+
+                img_tensor = transform(img)
+                if pascal:
+                    img_tensor = torch.nn.functional.interpolate(img_tensor.unsqueeze(0),
+                                                                 size=img_shape, mode='bilinear', align_corners=False)[0]
+                    # ann = resize_label(ann, size=(img_shape[1], img_shape[0])).cpu().detach().numpy()
 
                 anns.append(ann)
                 img_tensors.append(img_tensor)
 
-            anns = np.stack(anns, axis=0)
             img_tensors = torch.stack(img_tensors, dim=0).cuda()
-            logits, distances = ppnet.forward(img_tensors)
+            batch_logits, batch_distances = ppnet.forward(img_tensors)
 
-            logits = logits.permute(0, 3, 1, 2)
+            batch_logits = batch_logits.permute(0, 3, 1, 2)
 
-            logits = F.interpolate(logits, size=img_shape, mode='bilinear', align_corners=False)
-            distances = F.interpolate(distances, size=img_shape, mode='bilinear', align_corners=False)
+            # batch_logits = F.interpolate(batch_logits, size=img_shape, mode='bilinear', align_corners=False)
+            # batch_distances = F.interpolate(batch_distances, size=img_shape, mode='bilinear', align_corners=False)
 
-            pred = torch.argmax(logits, axis=1).cpu().detach().numpy()
-            nearest_proto = torch.argmin(distances, axis=1).cpu().detach().numpy()
-
-            distances = distances.cpu().detach().numpy()
-
-            correct_pixels += np.sum(((pred + 1) == anns) & (anns != 0))
-            total_pixels += np.sum(anns != 0)
-
-            for cls_i in range(ppnet.num_classes):
-                pr = pred == cls_i
-                gt = anns == cls_i + 1
-
-                CLS_I[cls_i] += np.sum(pr & gt)
-                CLS_U[cls_i] += np.sum((pr | gt) & (anns != 0))  # ignore pixels where ground truth is void
-
-            # save some RAM
-            del logits, img_tensors
-
-            # calculate statistics of prototypes occurrences as nearest
-            nearest_proto_cls = PROTO2CLS(nearest_proto)
-
-            for class_i, class_name in pred2name.items():
-                is_class_proto = (pred == class_i) & (nearest_proto_cls == class_i)
-                for proto_i, proto_num in enumerate(cls2protos[class_i]):
-                    cls_prototype_counts[class_i][proto_i] += np.sum(is_class_proto & (nearest_proto == proto_num))
-            del is_class_proto
-
-            # calculate top K nearest prototypes for random sample of pixels for speed
             for sample_i in range(len(batch_img_files)):
+                ann = anns[sample_i]
+                logits = torch.unsqueeze(batch_logits[sample_i], 0)
+                distances = torch.unsqueeze(batch_distances[sample_i], 0)
+
+                logits = F.interpolate(logits, size=ann.shape, mode='bilinear', align_corners=False)[0]
+                distances = F.interpolate(distances, size=ann.shape, mode='bilinear', align_corners=False)[0]
+
+                nearest_proto = torch.argmin(distances, dim=0).cpu().detach().numpy()
+                distances = distances.cpu().detach().numpy()
+                pred = torch.argmax(logits, dim=0).cpu().detach().numpy()
+
+                correct_pixels += np.sum(((pred + 1) == ann) & (ann != 0))
+                #  (2,1024,2048) (2,2048,1024)
+                total_pixels += np.sum(ann != 0)
+
+                for cls_i in range(ppnet.num_classes):
+                    pr = pred == cls_i
+                    gt = ann == cls_i + 1
+
+                    # ValueError: operands could not be broadcast together with shapes (2,1024,2048) (2,2048,1024)
+
+                    CLS_I[cls_i] += np.sum(pr & gt)
+                    CLS_U[cls_i] += np.sum((pr | gt) & (ann != 0))  # ignore pixels where ground truth is void
+
+                # calculate statistics of prototypes occurrences as nearest
+                nearest_proto_cls = PROTO2CLS(nearest_proto)
+
+                for class_i, class_name in pred2name.items():
+                    is_class_proto = (pred == class_i) & (nearest_proto_cls == class_i)
+                    for proto_i, proto_num in enumerate(cls2protos[class_i]):
+                        cls_prototype_counts[class_i][proto_i] += np.sum(is_class_proto & (nearest_proto == proto_num))
+                del is_class_proto
+
+                # calculate top K nearest prototypes for random sample of pixels for speed
                 n_random_pixels = 100
 
-                sample_distances = distances[sample_i]
+                rows = np.random.randint(distances.shape[1], size=n_random_pixels)
+                cols = np.random.randint(distances.shape[2], size=n_random_pixels)
 
-                rows = np.random.randint(sample_distances.shape[1], size=n_random_pixels)
-                cols = np.random.randint(sample_distances.shape[2], size=n_random_pixels)
-
-                sample_distances = sample_distances[:, rows, cols]
-                sample_preds = pred[sample_i, rows, cols]
+                sample_distances = distances[:, rows, cols]
+                sample_preds = pred[rows, cols]
 
                 nearest_pixel_protos = np.argsort(sample_distances, axis=0)
                 is_class_proto = PROTO2CLS(nearest_pixel_protos) == sample_preds
@@ -209,10 +214,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
     pixel_accuracy = correct_pixels / total_pixels * 100
 
-    if pascal:
-        CLS_IOU = {cls_i: (CLS_I[cls_i] * 100) / u for cls_i, u in CLS_U.items() if u > 0}
-    else:
-        CLS_IOU = {cls_i + 1: (CLS_I[cls_i] * 100) / u for cls_i, u in CLS_U.items() if u > 0}
+    CLS_IOU = {cls_i: (CLS_I[cls_i] * 100) / u for cls_i, u in CLS_U.items() if u > 0}
     mean_iou = np.mean(list(CLS_IOU.values()))
     log(f'{model_name} {training_phase} mIOU: {mean_iou}')
 
@@ -266,7 +268,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
     # run the following code to visualize on some samples
 
-    N_SAMPLES = 20
+    N_SAMPLES = 5
     DPI = 100
 
     for example_i, img_file in tqdm(enumerate(np.random.choice(all_img_files, size=N_SAMPLES, replace=False)),
