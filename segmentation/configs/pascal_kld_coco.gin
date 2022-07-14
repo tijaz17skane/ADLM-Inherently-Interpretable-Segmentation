@@ -14,7 +14,7 @@ deeplabv2_resnet101_features.deeplab_n_features = 64
 deeplabv2_resnet101_features.scales = [0.5, 0.75]
 
 train.random_seed = 20220227
-train.load_coco = False
+train.load_coco = True
 train.early_stopping_patience_last_layer = 100
 train.start_checkpoint = ''
 
@@ -24,7 +24,7 @@ train.start_checkpoint = ''
 # train.warmup_batch_size = 100
 # train.joint_batch_size = 15
 # train.joint_batch_size = 15
-train.warmup_steps = 0 #  50000 # 5000 batches
+train.warmup_steps = 25000 # 5000 batches
 train.finetune_steps = 10000 # 2000 batches
 train.joint_steps = 150000 # 30000 batches
 train.warmup_batch_size = 2

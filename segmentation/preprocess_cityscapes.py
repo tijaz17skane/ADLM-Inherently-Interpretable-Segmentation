@@ -27,7 +27,7 @@ import multiprocessing
 # Cityscapes images have dimensions 1024x2024 pixels
 # We generate the biggest possible "windowed" margin of 512 for a square sliding window of size 1024x1024
 
-MARGIN_SIZE = 512
+MARGIN_SIZE = 0
 
 SOURCE_PATH = os.environ['SOURCE_DATA_PATH']
 TARGET_PATH = os.environ['DATA_PATH']

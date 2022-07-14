@@ -33,14 +33,15 @@ def process_images_in_chunks(args):
         chunk_img_ids.append(img_id)
 
         # 1. Save labels
-        with open(os.path.join(SOURCE_PATH, f'SegmentationClassAug/{img_id}.png'), 'rb') as f:
-            img = Image.open(f).convert('RGB')
+        if split_key != 'test':
+            with open(os.path.join(SOURCE_PATH, f'SegmentationClassAug/{img_id}.png'), 'rb') as f:
+                img = Image.open(f).convert('RGB')
 
-        pix = np.array(img).astype(np.uint8)
-        pix = pix[:, :, 0]
-        unique_classes.update(set(np.unique(pix)))
-        # pix.shape = (height, width, channels)
-        np.save(os.path.join(ANNOTATIONS_DIR, split_key, img_id), pix)
+            pix = np.array(img).astype(np.uint8)
+            pix = pix[:, :, 0]
+            unique_classes.update(set(np.unique(pix)))
+            # pix.shape = (height, width, channels)
+            np.save(os.path.join(ANNOTATIONS_DIR, split_key, img_id), pix)
 
         # 2. Save image
         input_img_path = os.path.join(SOURCE_PATH, f'JPEGImages/{img_id}.jpg')
@@ -67,12 +68,12 @@ def preprocess_pascal(n_jobs: int, chunk_size: int = 10):
     os.makedirs(MARGIN_IMG_DIR, exist_ok=True)
 
     img_ids = {
-        'train_aug': [], 'train': [], 'val': []
+        'train_aug': [], 'train': [], 'val': [], 'test': []
     }
 
     split_info_dir = os.path.join(SOURCE_PATH, 'ImageSets/SegmentationAug')
 
-    for split_key in tqdm(['train_aug', 'train', 'val'], desc='preprocessing images'):
+    for split_key in tqdm(['train_aug', 'train', 'val', 'test'], desc='preprocessing images'):
         split_img_ids = [img_id.strip().split('/')[-1].split('.')[0]
                          for img_id in open(os.path.join(split_info_dir, f'{split_key}.txt'), 'r')]
 

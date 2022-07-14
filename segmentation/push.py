@@ -33,13 +33,12 @@ def push_prototypes(dataset: PatchClassificationDataset,
                     log=print,
                     pascal=False,
                     prototype_activation_function_in_numpy=None):
-    
     ID_MAPPING = PASCAL_ID_MAPPING if pascal else CITYSCAPES_19_EVAL_CATEGORIES
     CATEGORIES = PASCAL_CATEGORIES if pascal else CITYSCAPES_CATEGORIES
 
     cls2name = {k - 1: i for i, k in ID_MAPPING.items() if k > 0}
     if pascal:
-        cls2name = {i: CATEGORIES[k+1] for i, k in cls2name.items() if k < len(CATEGORIES)-1}
+        cls2name = {i: CATEGORIES[k + 1] for i, k in cls2name.items() if k < len(CATEGORIES) - 1}
     else:
         cls2name = {i: CATEGORIES[k] for i, k in cls2name.items()}
 
@@ -190,7 +189,6 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
     del img_tensor
 
     logits, distances = ppnet.forward_from_conv_features(conv_features)
-    del logits
 
     model_output_height = conv_features.shape[2]
     model_output_width = conv_features.shape[3]
@@ -238,6 +236,13 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
     original_img_j = np.transpose(original_img_j, (1, 2, 0))
     original_img_height = original_img_j.shape[0]
     original_img_width = original_img_j.shape[1]
+
+    # get segmentation map
+    logits = logits.permute(0, 3, 1, 2)
+    logits_inter = torch.nn.functional.interpolate(logits, size=original_img_j.shape[:2],
+                                                   mode='bilinear', align_corners=False)
+    logits_inter = logits_inter[0]
+    pred = torch.argmax(logits_inter, dim=0).cpu().detach().numpy()
 
     for j in range(n_prototypes):
         # target_class is the class of the class_specific prototype
@@ -331,7 +336,7 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                                                                     threshold=threshold_gt)
             # crop out the image patch with high activation as prototype image
             proto_img_j_gt = original_img_j[proto_bound_j_gt[0]:proto_bound_j_gt[1],
-                                            proto_bound_j_gt[2]:proto_bound_j_gt[3], :]
+                             proto_bound_j_gt[2]:proto_bound_j_gt[3], :]
 
             # save the prototype boundary (rectangular boundary of highly activated region)
             proto_bound_boxes[j, 0] = proto_rf_boxes[j, 0]
@@ -355,6 +360,21 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                 cls_name = cls2name[target_class]
                 dir_for_saving_prototypes_cls = os.path.join(dir_for_saving_prototypes, cls_name)
                 os.makedirs(dir_for_saving_prototypes_cls, exist_ok=True)
+                DPI = 100
+
+                # save segmentation
+                plt.figure(figsize=(img_width / DPI, img_height / DPI))
+                plt.figure(figsize=(img_width / DPI, img_height / DPI))
+                plt.imshow(original_img_j)
+
+                plt.imshow(pred, alpha=0.7)
+                plt.axis('off')
+                plt.subplots_adjust(top=1, bottom=0, right=1, left=0,
+                                    hspace=0, wspace=0)
+                plt.margins(0, 0)
+                plt.savefig(os.path.join(dir_for_saving_prototypes_cls,
+                                         prototype_img_filename_prefix + f'_{j}-original_segmentation.png'))
+                plt.close()
 
                 if prototype_self_act_filename_prefix is not None:
                     # save the numpy array of the prototype self activation
@@ -370,10 +390,6 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                                original_img_j,
                                vmin=0.0,
                                vmax=1.0)
-
-                    DPI = 100
-
-                    plt.figure(figsize=(img_width/DPI, img_height/DPI))
                     plt.imshow(original_img_j)
                     plt.plot([rf_start_w_index, rf_start_w_index], [rf_start_h_index, rf_end_h_index],
                              [rf_end_w_index, rf_end_w_index], [rf_start_h_index, rf_end_h_index],
@@ -418,7 +434,7 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
                                vmin=0.0,
                                vmax=1.0)
 
-                    plt.figure(figsize=(img_width/DPI, img_height/DPI))
+                    plt.figure(figsize=(img_width / DPI, img_height / DPI))
                     plt.imshow(overlayed_original_img_j)
                     plt.plot([rf_start_w_index, rf_start_w_index], [rf_start_h_index, rf_end_h_index],
                              [rf_end_w_index, rf_end_w_index], [rf_start_h_index, rf_end_h_index],

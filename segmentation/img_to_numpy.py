@@ -10,9 +10,13 @@ import numpy as np
 from settings import data_path
 
 
-def convert_images_to_numpy(margin_size: int = 512):
-    for split_key in ['train', 'val', 'test']:
+def convert_images_to_numpy(margin_size: int = 0):
+    # for split_key in ['train', 'train_aug', 'val', 'test']:
+    for split_key in ['test']:
         img_dir = os.path.join(data_path, f'img_with_margin_{margin_size}/{split_key}')
+
+        if not os.path.exists(img_dir):
+            continue
 
         for filename in tqdm(os.listdir(img_dir), desc=split_key):
             if filename.endswith('.png'):

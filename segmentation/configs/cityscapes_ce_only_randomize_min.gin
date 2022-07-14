@@ -28,7 +28,7 @@ PatchClassificationDataset.image_margin_size = 512
 PatchClassificationDataset.window_size = (513, 513)
 PatchClassificationDataset.only_19_from_cityscapes = True
 
-PatchClassificationDataModule.dataloader_n_jobs = 32
+PatchClassificationDataModule.dataloader_n_jobs = 8
 
 PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_clst = 0.0
@@ -51,7 +51,7 @@ PatchClassificationModule.poly_lr_power = 0.9
 PatchClassificationModule.prototype_rebalancing_threshold = 0.01
 PatchClassificationModule.prototype_initialization_method = 'random'
 PatchClassificationModule.randomize_all_below_threshold = True
-PatchClassificationModule.prototype_rebalance_every = 1
+PatchClassificationModule.prototype_rebalance_every = 4
 
 PPNet.bottleneck_stride = 1
 PPNet.nearest_proto_only = True

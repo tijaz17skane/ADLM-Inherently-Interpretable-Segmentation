@@ -42,6 +42,7 @@ def train(
         early_stopping_patience_last_layer: int = gin.REQUIRED,
         warmup_steps: int = gin.REQUIRED,
         joint_steps: int = gin.REQUIRED,
+        finetune_steps: int = gin.REQUIRED,
         warmup_batch_size: int = gin.REQUIRED,
         joint_batch_size: int = gin.REQUIRED,
         prototype_rebalancing_start: Optional[int] = gin.REQUIRED,
@@ -169,6 +170,12 @@ def train(
         trainer.fit_loop.current_epoch = current_epoch + 1
         trainer.fit(model=module, datamodule=data_module)
 
+        # last_checkpoint = os.path.join(results_dir, 'checkpoints/nopush_last.pth')
+        # if os.path.exists(last_checkpoint):
+            # log(f'Loading model from {last_checkpoint}')
+            # ppnet = torch.load(last_checkpoint)
+            # ppnet = ppnet.cuda()
+
         log('SAVING PROTOTYPES')
         ppnet = ppnet.cuda()
         module.eval()
@@ -192,6 +199,12 @@ def train(
             pascal=not push_dataset.only_19_from_cityscapes,
             log=log
         )
+
+        torch.save(obj=ppnet, f=os.path.join(results_dir, f'checkpoints/push_last.pth'))
+        torch.save(obj=ppnet, f=os.path.join(results_dir, f'checkpoints/push_best.pth'))
+
+        ppnet = torch.load(os.path.join(results_dir, f'checkpoints/push_last.pth'))
+        ppnet = ppnet.cuda()
     else:
         best_checkpoint = os.path.join(results_dir, 'pruned/pruned.pth')
         log(f'Loading pruned model from {best_checkpoint}')
@@ -222,11 +235,12 @@ def train(
         model_dir=os.path.join(results_dir, 'pruned') if pruned else results_dir,
         ppnet=ppnet,
         training_phase=2,
+        max_steps=finetune_steps,
         prototype_rebalancing=None
     )
     current_epoch = trainer.current_epoch if trainer is not None else 0
     trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
-                      enable_progress_bar=False)
+                      enable_progress_bar=False, max_steps=finetune_steps)
     trainer.fit_loop.current_epoch = current_epoch + 1
     trainer.fit(model=module, datamodule=data_module)
 

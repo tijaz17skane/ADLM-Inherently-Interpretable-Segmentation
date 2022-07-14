@@ -124,6 +124,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
     n_batches = int(np.ceil(len(all_img_files) / batch_size))
     batched_img_files = np.array_split(all_img_files, n_batches)
+    # batched_img_files = batched_img_files[:50]
 
     correct_pixels, total_pixels = 0, 0
 

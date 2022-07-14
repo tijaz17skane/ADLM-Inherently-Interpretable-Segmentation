@@ -24,7 +24,7 @@ train.start_checkpoint = ''
 # train.warmup_batch_size = 100
 # train.joint_batch_size = 15
 # train.joint_batch_size = 15
-train.warmup_steps = 0 #  50000 # 5000 batches
+train.warmup_steps = 25000 # 5000 batches
 train.finetune_steps = 10000 # 2000 batches
 train.joint_steps = 150000 # 30000 batches
 train.warmup_batch_size = 2
@@ -37,14 +37,14 @@ PatchClassificationDataset.window_size = (321, 321)
 PatchClassificationDataset.only_19_from_cityscapes = False
 PatchClassificationDataset.scales = (0.5, 1.5)
 
-PatchClassificationDataModule.dataloader_n_jobs = 16
+PatchClassificationDataModule.dataloader_n_jobs = 8
 PatchClassificationDataModule.train_key = 'train_aug'
 
 PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_clst = 0.0
 PatchClassificationModule.loss_weight_sep = 0.0
 PatchClassificationModule.loss_weight_l1 = 1e-4
-PatchClassificationModule.loss_weight_kld = 0.1
+PatchClassificationModule.loss_weight_kld = 0.25
 PatchClassificationModule.loss_weight_cls_act = 0.0
 
 PatchClassificationModule.joint_optimizer_lr_features = 2.5e-5
