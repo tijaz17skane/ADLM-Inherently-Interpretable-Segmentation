@@ -125,7 +125,7 @@ def train(
                     tags=[config_path, 'segmentation', 'protopnet'],
                     name=experiment_name
                 )
-                loggers.append(neptune_logger)
+            loggers.append(neptune_logger)
 
             neptune_run = neptune_logger.run
             neptune_run['config_file'].upload(f'segmentation/configs/{config_path}.gin')

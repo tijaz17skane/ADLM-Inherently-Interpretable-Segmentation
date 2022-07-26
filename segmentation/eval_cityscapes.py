@@ -19,7 +19,7 @@ from settings import data_path, log
 
 
 def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pascal: bool = False,
-                   margin: int = 0):
+                   margin: int = 0, window_size: int = -1, window_overlap: int = -1, interpolate_img_size=513):
     model_path = os.path.join(os.environ['RESULTS_DIR'], model_name)
     config_path = os.path.join(model_path, 'config.gin')
     gin.parse_config_file(config_path)
@@ -53,7 +53,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
     pred2name = {k - 1: i for i, k in ID_MAPPING.items() if k > 0}
     if pascal:
-        pred2name = {i: CATEGORIES[k+1] for i, k in pred2name.items() if k < len(CATEGORIES)-1}
+        pred2name = {i: CATEGORIES[k + 1] for i, k in pred2name.items() if k < len(CATEGORIES) - 1}
     else:
         pred2name = {i: CATEGORIES[k] for i, k in pred2name.items()}
 
@@ -62,7 +62,11 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
     mean_top_k = np.zeros(proto_ident.shape[0], dtype=float)
 
     RESULTS_DIR = os.path.join(model_path, f'evaluation/{training_phase}')
+    if window_overlap != -1 or window_size != -1 or interpolate_img_size != 513:
+        RESULTS_DIR = os.path.join(RESULTS_DIR, f'{window_overlap}_{window_size}')
+
     os.makedirs(RESULTS_DIR, exist_ok=True)
+    print(f'Evaluation will be saved to {RESULTS_DIR}')
 
     CLS_CONVERT = np.vectorize(ID_MAPPING.get)
 
@@ -111,7 +115,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
             all_cls_distances[class_i])
         axes[class_i].set_title(f'{class_name}\nmin: {d_min:.2f} avg: {d_avg:.2f} max: {d_max:.2f}')
 
-    for i in range(class_i+1, len(axes)):
+    for i in range(class_i + 1, len(axes)):
         axes[i].axis('off')
 
     plt.tight_layout()
@@ -124,16 +128,22 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
     n_batches = int(np.ceil(len(all_img_files) / batch_size))
     batched_img_files = np.array_split(all_img_files, n_batches)
-    # batched_img_files = batched_img_files[:50]
+
+    # test only
+    # batched_img_files = batched_img_files[:20]
 
     correct_pixels, total_pixels = 0, 0
 
     with torch.no_grad():
         for batch_img_files in tqdm(batched_img_files, desc='evaluating'):
             img_tensors = []
-            anns = []
+            img_tensors_locations = []
+            window_num = 0
+            sample2windows = {}
 
-            for img_file in batch_img_files:
+            anns = []
+            for sample_i, img_file in enumerate(batch_img_files):
+                sample2windows[sample_i] = []
                 img = np.load(os.path.join(img_dir, img_file)).astype(np.uint8)
                 ann = np.load(os.path.join(ann_dir, img_file))
                 ann = CLS_CONVERT(ann)
@@ -142,34 +152,93 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
                     img = img[margin:-margin, margin:-margin]
 
                 if pascal:
-                    img_shape = (513, 513)
+                    img_shape = (interpolate_img_size, interpolate_img_size)
                 else:
                     img_shape = ann.shape
 
                 img_tensor = transform(img)
+
                 if pascal:
                     img_tensor = torch.nn.functional.interpolate(img_tensor.unsqueeze(0),
-                                                                 size=img_shape, mode='bilinear', align_corners=False)[0]
-                    # ann = resize_label(ann, size=(img_shape[1], img_shape[0])).cpu().detach().numpy()
+                                                                 size=img_shape, mode='bilinear',
+                                                                 align_corners=False)[0]
+
+                if window_size != -1 or window_overlap != -1:
+                    for i in range(0, int(img_tensor.shape[1] / (window_size - window_overlap))):
+                        start_i, end_i = i * window_overlap, i * window_overlap + window_size
+                        if end_i > img_tensor.shape[1]:
+                            start_i, end_i = img_tensor.shape[1] - window_size, img_tensor.shape[1]
+
+                        for j in range(0, int(img_tensor.shape[2] / (window_size - window_overlap))):
+                            start_j, end_j = j * window_overlap, j * window_overlap + window_size
+                            if end_j > img_tensor.shape[2]:
+                                start_j, end_j = img_tensor.shape[2] - window_size, img_tensor.shape[2]
+
+                            img_tensors.append(img_tensor[:, start_i:end_i, start_j:end_j])
+                            img_tensors_locations.append((start_i, end_i, start_j, end_j))
+                            sample2windows[sample_i].append(window_num)
+                            window_num += 1
+                else:
+                    img_tensors.append(img_tensor)
 
                 anns.append(ann)
-                img_tensors.append(img_tensor)
 
             img_tensors = torch.stack(img_tensors, dim=0).cuda()
-            batch_logits, batch_distances = ppnet.forward(img_tensors)
+
+            if img_tensors.shape[0] > batch_size:
+                batch_logits, batch_distances = [], []
+                for i in range(0, img_tensors.shape[0], batch_size):
+                    j = min(i + batch_size, img_tensors.shape[0])
+                    sub_batch_tensors = img_tensors[i:j]
+                    sub_batch_logits, sub_batch_distances = ppnet.forward(sub_batch_tensors)
+                    batch_logits.append(sub_batch_logits)
+                    batch_distances.append(sub_batch_distances)
+                batch_logits = torch.concat(batch_logits, dim=0)
+                batch_distances = torch.concat(batch_distances, dim=0)
+            else:
+                batch_logits, batch_distances = ppnet.forward(img_tensors)
 
             batch_logits = batch_logits.permute(0, 3, 1, 2)
 
-            # batch_logits = F.interpolate(batch_logits, size=img_shape, mode='bilinear', align_corners=False)
-            # batch_distances = F.interpolate(batch_distances, size=img_shape, mode='bilinear', align_corners=False)
-
             for sample_i in range(len(batch_img_files)):
-                ann = anns[sample_i]
-                logits = torch.unsqueeze(batch_logits[sample_i], 0)
-                distances = torch.unsqueeze(batch_distances[sample_i], 0)
 
-                logits = F.interpolate(logits, size=ann.shape, mode='bilinear', align_corners=False)[0]
-                distances = F.interpolate(distances, size=ann.shape, mode='bilinear', align_corners=False)[0]
+                ann = anns[sample_i]
+
+                if pascal:
+                    logits = torch.zeros((batch_logits.shape[1], interpolate_img_size, interpolate_img_size),
+                                         device=batch_logits.device)
+                    distances = torch.zeros((batch_distances.shape[1], interpolate_img_size, interpolate_img_size),
+                                            device=batch_logits.device)
+                    num_predictions = torch.zeros((1, interpolate_img_size, interpolate_img_size),
+                                                  device=batch_logits.device)
+                else:
+                    logits = torch.zeros((batch_logits.shape[1],) + ann.shape, device=batch_logits.device)
+                    distances = torch.zeros((batch_distances.shape[1],) + ann.shape, device=batch_logits.device)
+                    num_predictions = torch.zeros((1,) + ann.shape, device=batch_logits.device)
+
+                for sample_window_i in sample2windows[sample_i]:
+                    sample_logits = torch.unsqueeze(batch_logits[sample_window_i], 0)
+                    sample_distances = torch.unsqueeze(batch_distances[sample_window_i], 0)
+                    start_i, end_i, start_j, end_j = img_tensors_locations[sample_window_i]
+
+                    this_window_size = end_i - start_i, end_j - start_j
+
+                    logits[:, start_i: end_i, start_j: end_j] += \
+                        F.interpolate(sample_logits, size=this_window_size, mode='bilinear', align_corners=False)[0]
+                    distances[:, start_i: end_i, start_j: end_j] += \
+                        F.interpolate(sample_distances, size=this_window_size, mode='bilinear', align_corners=False)[0]
+                    num_predictions[:, start_i: end_i, start_j: end_j] += 1
+
+                logits = logits / num_predictions
+                distances = distances / num_predictions
+
+                if pascal:
+                    logits = torch.unsqueeze(logits, 0)
+                    distances = torch.unsqueeze(distances, 0)
+                    logits = F.interpolate(logits, size=ann.shape,
+                                           mode='bilinear', align_corners=False)[0]
+                    distances = F.interpolate(distances, size=ann.shape,
+                                              mode='bilinear', align_corners=False)[0]
 
                 nearest_proto = torch.argmin(distances, dim=0).cpu().detach().numpy()
                 distances = distances.cpu().detach().numpy()
@@ -327,7 +396,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
         # show only one example in notebook
         # if example_i == 0:
-            # plt.show()
+        # plt.show()
         plt.close()
 
         plt.figure(figsize=(img.shape[1] / DPI, img.shape[0] / DPI))
