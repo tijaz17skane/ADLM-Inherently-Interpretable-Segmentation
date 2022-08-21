@@ -5,7 +5,7 @@ Trainer.gpus = 1
 construct_PPNet.base_architecture = 'deeplabv2_resnet101'
 construct_PPNet.pretrained = False
 
-construct_PPNet.prototype_shape = (210, 64, 1, 1)
+construct_PPNet.prototype_shape = (420, 64, 1, 1)
 construct_PPNet.num_classes = 21
 construct_PPNet.prototype_activation_function = 'log'
 construct_PPNet.add_on_layers_type = 'deeplab_simple'

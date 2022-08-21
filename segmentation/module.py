@@ -13,6 +13,7 @@ from pytorch_lightning import LightningModule
 import numpy as np
 
 from deeplab_pytorch.libs.utils import PolynomialLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from segmentation.utils import get_params
 from helpers import list_of_distances
 from model import PPNet
@@ -126,7 +127,7 @@ class PatchClassificationModule(LightningModule):
             log(f'WARM-UP TRAINING START. ({self.max_steps} steps)')
         elif self.training_phase == 1:
             joint(model=self.ppnet, log=log)
-            log(f'JOINT TRAINING START. ({self.max_steps} steps)')
+            log(f'JOINT TRAINING START. (max {self.max_steps} steps)')
         else:
             last_only(model=self.ppnet, log=log)
             log('LAST LAYER TRAINING START.')
@@ -150,6 +151,7 @@ class PatchClassificationModule(LightningModule):
         self.lr_scheduler = None
         self.iter_steps = 0
         self.batch_metrics = defaultdict(list)
+        self.sanity_check_val = True
 
     def forward(self, x):
         return self.ppnet(x)
@@ -200,9 +202,27 @@ class PatchClassificationModule(LightningModule):
                 output = output[target_not_void]
                 patch_activations = patch_activations[target_not_void]
 
+            # TODO: This is temporary for gumbel softmax
+            # if split_key == 'train':
+                # # add noise to outputs using gumbel softmax
+                # output = F.gumbel_softmax(
+                    # output,
+                    # tau=1.0,
+                    # hard=False
+                # )
+                # # NLL Loss must be used if output already is after softmax
+                # cross_entropy = torch.nn.functional.nll_loss(
+                    # torch.log(output),
+                    # target.long()
+                # )
+            # else:
+                # cross_entropy = torch.nn.functional.cross_entropy(
+                    # output,
+                    # target.long()
+                # )
             cross_entropy = torch.nn.functional.cross_entropy(
                 output,
-                target.long(),
+                target.long()
             )
 
             # calculate KLD over class pixels between prototypes from same class
@@ -215,7 +235,7 @@ class PatchClassificationModule(LightningModule):
                         continue
                     cls_protos = torch.nonzero(self.ppnet.prototype_class_identity[:, cls_i]). \
                         flatten().cpu().detach().numpy()
-                    if len(cls_protos) == 0:
+                    if len(cls_protos) < 2:
                         continue
 
                     cls_mask = (target_img[img_i] == cls_i)
@@ -225,7 +245,12 @@ class PatchClassificationModule(LightningModule):
 
                     log_cls_activations = [torch.nn.functional.log_softmax(act, dim=0) for act in log_cls_activations]
 
-                    for i in range(len(cls_protos)):
+                    # randomize 10 * 9 pairs of prototypes
+                    cls_protos_i = np.arange(len(cls_protos))
+                    if len(cls_protos_i) > 10:
+                        cls_protos_i = np.random.choice(cls_protos_i, size=10, replace=False)
+
+                    for i in cls_protos_i:
                         # cls_class_act_loss = (torch.mean(cls_activations[i]) /
                                               # (torch.mean(non_cls_activations[i]) + eps)) ** 2
                         # cls_act_loss.append(cls_class_act_loss)
@@ -235,7 +260,12 @@ class PatchClassificationModule(LightningModule):
                             continue
 
                         log_p1_scores = log_cls_activations[i]
-                        for j in range(i + 1, len(cls_protos)):
+
+                        other_protos_i = np.arange(i+1, len(cls_protos))
+                        if len(other_protos_i) > 9:
+                            other_protos_i = np.random.choice(other_protos_i, size=9, replace=False)
+
+                        for j in other_protos_i:
                             log_p2_scores = log_cls_activations[j]
 
                             # add kld1 and kld2 to make 'symmetrical kld'
@@ -348,9 +378,6 @@ class PatchClassificationModule(LightningModule):
             if self.iter_steps == self.iter_size:
                 self.iter_steps = 0
                 optimizer.step()
-
-                if self.lr_scheduler is not None:
-                    self.lr_scheduler.step()
 
             lr = get_lr(optimizer)
             self.log('lr', lr, on_step=True)
@@ -527,8 +554,7 @@ class PatchClassificationModule(LightningModule):
             stage_key = 'push'
 
         torch.save(obj=self.ppnet, f=os.path.join(self.checkpoints_dir, f'{stage_key}_last.pth'))
-
-        if val_acc > self.best_acc:
+        if not self.sanity_check_val and val_acc > self.best_acc:
             log(f'Saving best model, accuracy: ' + str(val_acc))
             self.best_acc = val_acc
             torch.save(obj=self.ppnet, f=os.path.join(self.checkpoints_dir, f'{stage_key}_best.pth'))
@@ -541,6 +567,12 @@ class PatchClassificationModule(LightningModule):
                     'patches_nearest_prototypes': Counter()
                 }
             self.rebalance_epoch_counter += 1
+
+        if self.sanity_check_val:
+            self.sanity_check_val = False
+        else:
+            if self.lr_scheduler is not None:
+                self.lr_scheduler.step(val_acc)
 
     def _epoch_end(self, split_key: str):
         metrics = self.metrics[split_key]
@@ -640,11 +672,13 @@ class PatchClassificationModule(LightningModule):
         optimizer = torch.optim.Adam(optimizer_specs)
 
         if self.training_phase == 1:
-            self.lr_scheduler = PolynomialLR(
+            self.lr_scheduler = ReduceLROnPlateau(
                 optimizer=optimizer,
-                step_size=1,
-                iter_max=self.max_steps // self.iter_size,
-                power=self.poly_lr_power
+                mode='max',
+                verbose=True,
+                factor=0.1,
+                patience=4,
+                min_lr=1e-8
             )
 
         return optimizer

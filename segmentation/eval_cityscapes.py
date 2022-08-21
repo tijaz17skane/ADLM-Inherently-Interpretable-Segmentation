@@ -63,7 +63,7 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
     RESULTS_DIR = os.path.join(model_path, f'evaluation/{training_phase}')
     if window_overlap != -1 or window_size != -1 or interpolate_img_size != 513:
-        RESULTS_DIR = os.path.join(RESULTS_DIR, f'{window_overlap}_{window_size}')
+        RESULTS_DIR = os.path.join(RESULTS_DIR, f'{window_overlap}_{window_size}_{interpolate_img_size}')
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
     print(f'Evaluation will be saved to {RESULTS_DIR}')
@@ -165,12 +165,14 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
                 if window_size != -1 or window_overlap != -1:
                     for i in range(0, int(img_tensor.shape[1] / (window_size - window_overlap))):
-                        start_i, end_i = i * window_overlap, i * window_overlap + window_size
+                        start_i, end_i = i * (window_size - window_overlap), i * (window_size - window_overlap) + window_size
+
                         if end_i > img_tensor.shape[1]:
                             start_i, end_i = img_tensor.shape[1] - window_size, img_tensor.shape[1]
 
                         for j in range(0, int(img_tensor.shape[2] / (window_size - window_overlap))):
-                            start_j, end_j = j * window_overlap, j * window_overlap + window_size
+                            start_j, end_j = j * (window_size - window_overlap), j * (window_size - window_overlap) + window_size
+
                             if end_j > img_tensor.shape[2]:
                                 start_j, end_j = img_tensor.shape[2] - window_size, img_tensor.shape[2]
 
@@ -180,6 +182,9 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
                             window_num += 1
                 else:
                     img_tensors.append(img_tensor)
+                    sample2windows[sample_i].append(window_num)
+                    img_tensors_locations.append((0, img_tensor.shape[1], 0, img_tensor.shape[2]))
+                    window_num += 1
 
                 anns.append(ann)
 

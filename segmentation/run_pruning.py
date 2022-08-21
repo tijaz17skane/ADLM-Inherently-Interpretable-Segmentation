@@ -6,6 +6,7 @@ import torch
 import torch.utils.data
 
 import prune
+import save
 from preprocess import preprocess
 from segmentation.data_module import PatchClassificationDataModule
 from log import create_logger

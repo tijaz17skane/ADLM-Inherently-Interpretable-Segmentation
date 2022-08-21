@@ -5,12 +5,12 @@ Trainer.gpus = 1
 construct_PPNet.base_architecture = 'deeplabv2_resnet101'
 construct_PPNet.pretrained = False
 
-construct_PPNet.prototype_shape = (210, 64, 1, 1)
+construct_PPNet.prototype_shape = (210, 256, 1, 1)
 construct_PPNet.num_classes = 21
 construct_PPNet.prototype_activation_function = 'log'
 construct_PPNet.add_on_layers_type = 'deeplab_simple'
 
-deeplabv2_resnet101_features.deeplab_n_features = 64
+deeplabv2_resnet101_features.deeplab_n_features = 256
 deeplabv2_resnet101_features.scales = [0.5, 0.75]
 
 train.random_seed = 20220227
@@ -24,9 +24,10 @@ train.start_checkpoint = ''
 # train.warmup_batch_size = 100
 # train.joint_batch_size = 15
 # train.joint_batch_size = 15
-train.warmup_steps = 50000 #  50000 # 5000 batches
+
+train.warmup_steps = 25000 # 5000 batches
 train.finetune_steps = 50000 # 10000 batches
-train.joint_steps = 2000000 # up to 450000 batches
+train.joint_steps = 300000 # 30000 batches
 train.warmup_batch_size = 2
 train.joint_batch_size = 2
 
@@ -47,16 +48,16 @@ PatchClassificationModule.loss_weight_l1 = 1e-4
 PatchClassificationModule.loss_weight_kld = 0.25
 PatchClassificationModule.loss_weight_cls_act = 0.0
 
-PatchClassificationModule.joint_optimizer_lr_features = 2.5e-5
-PatchClassificationModule.joint_optimizer_lr_add_on_layers = 2.5e-4
-PatchClassificationModule.joint_optimizer_lr_prototype_vectors = 2.5e-4
+PatchClassificationModule.joint_optimizer_lr_features = 5e-5
+PatchClassificationModule.joint_optimizer_lr_add_on_layers = 5e-4
+PatchClassificationModule.joint_optimizer_lr_prototype_vectors = 5e-4
 PatchClassificationModule.joint_optimizer_weight_decay = 5e-4
 
-PatchClassificationModule.warm_optimizer_lr_add_on_layers = 2.5e-4
-PatchClassificationModule.warm_optimizer_lr_prototype_vectors = 2.5e-4
+PatchClassificationModule.warm_optimizer_lr_add_on_layers = 5e-4
+PatchClassificationModule.warm_optimizer_lr_prototype_vectors = 5e-4
 PatchClassificationModule.warm_optimizer_weight_decay = 5e-4
 
-PatchClassificationModule.last_layer_optimizer_lr = 1e-5
+PatchClassificationModule.last_layer_optimizer_lr = 2e-5
 
 PatchClassificationModule.ignore_void_class = True
 PatchClassificationModule.poly_lr_power = 0.9

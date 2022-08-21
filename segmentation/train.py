@@ -54,7 +54,6 @@ def train(
     os.makedirs(results_dir, exist_ok=True)
     log(f'Starting experiment in "{results_dir}" from config {config_path}')
 
-    last_checkpoint = os.path.join(results_dir, 'checkpoints', 'nopush_best.pth')
 
     if start_checkpoint:
         log(f'Loading checkpoint from {start_checkpoint}')
@@ -132,7 +131,7 @@ def train(
             neptune_run['config'] = json_gin_config
 
         shutil.copy(f'segmentation/configs/{config_path}.gin', os.path.join(results_dir, 'config.gin'))
-
+        
         if warmup_steps > 0:
             data_module = PatchClassificationDataModule(batch_size=warmup_batch_size)
             module = PatchClassificationModule(
@@ -165,8 +164,11 @@ def train(
             max_steps=joint_steps,
             prototype_rebalancing=1 if prototype_rebalancing_start is not None else None
         )
+        callbacks = [
+            EarlyStopping(monitor='val/accuracy', patience=10, mode='max')
+        ]
         trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
-                          min_steps=1, max_steps=joint_steps)
+                          min_steps=1, max_steps=joint_steps, callbacks=callbacks)
         trainer.fit_loop.current_epoch = current_epoch + 1
         trainer.fit(model=module, datamodule=data_module)
 
