@@ -8,8 +8,8 @@ construct_PPNet.num_classes = 2
 construct_PPNet.prototype_activation_function = 'log'
 construct_PPNet.add_on_layers_type = 'deeplab_simple'
 
-unet_features.unet_n_features = 2
-deeplabv2_resnet101_features.deeplab_n_features = 2
+unet_features.unet_n_features = 1
+deeplabv2_resnet101_features.deeplab_n_features = 1
 
 train.random_seed = 20220227
 train.load_coco = False
@@ -18,7 +18,7 @@ train.start_checkpoint = ''
 
 train.warmup_steps = 0
 train.finetune_steps = 10000
-train.joint_steps = 20000
+train.joint_steps = 10000
 train.warmup_batch_size = 2
 train.joint_batch_size = 2
 
@@ -35,7 +35,7 @@ PatchClassificationDataModule.train_key = 'train'
 PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_clst = 0.0
 PatchClassificationModule.loss_weight_sep = 0.0
-PatchClassificationModule.loss_weight_l1 = 1e-4
+PatchClassificationModule.loss_weight_l1 = 0.0
 PatchClassificationModule.loss_weight_kld = 0.0
 PatchClassificationModule.loss_weight_cls_act = 0.0
 

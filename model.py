@@ -85,6 +85,9 @@ class PPNet(nn.Module):
         # this has to be named features to allow the precise loading
         self.features = features
 
+        if self.no_prototypes:
+            return
+
         features_name = str(self.features).upper()
         if features_name.startswith('VGG') or features_name.startswith('RES'):
             first_add_on_layer_in_channels = \
@@ -310,6 +313,13 @@ class PPNet(nn.Module):
         if isinstance(conv_features, list):
             return [self.forward_from_conv_features(c) for c in conv_features]
 
+        if self.no_prototypes:
+            conv_features = conv_features.reshape(conv_features.shape[0], conv_features.shape[2],
+                                                  conv_features.shape[3], conv_features.shape[1])
+            conv_features = torch.cat((-conv_features, conv_features), dim=-1)
+
+            return conv_features, None
+
         # distances.shape = (batch_size, num_prototypes, n_patches_cols, n_patches_rows)
         distances = self._l2_convolution(conv_features)
 
@@ -322,10 +332,7 @@ class PPNet(nn.Module):
             dist_view = dist_view.reshape(-1, num_prototypes)
             prototype_activations = self.distance_2_similarity(dist_view)
 
-            if self.no_prototypes:
-                logits = conv_features
-            else:
-                logits = self.run_last_layer(prototype_activations)
+            logits = self.run_last_layer(prototype_activations)
 
             # shape: (batch_size, n_patches_cols, n_patches_rows, num_classes)
             logits = logits.reshape(batch_size, n_patches_cols, n_patches_rows, -1)

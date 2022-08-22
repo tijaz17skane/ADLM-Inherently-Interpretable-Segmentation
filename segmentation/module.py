@@ -184,6 +184,7 @@ class PatchClassificationModule(LightningModule):
 
         mcs_loss, mcs_cross_entropy, mcs_kld_loss, mcs_cls_act_loss = 0.0, 0.0, 0.0, 0.0
         for output, patch_activations in mcs_model_outputs:
+
             target = []
             for sample_target in mcs_target:
                 target.append(resize_label(sample_target, size=(output.shape[2], output.shape[1])).to(self.device))
@@ -194,16 +195,18 @@ class PatchClassificationModule(LightningModule):
             target_img = target.reshape(target.shape[0], -1) # (batch_size, img_size)
             target = target.flatten()
 
-            patch_activations = patch_activations.permute(0, 2, 3, 1)
-            patch_activations_img = patch_activations.reshape(patch_activations.shape[0], -1, patch_activations.shape[-1]) # (batch_size, img_size, num_proto)
-            patch_activations = patch_activations.reshape(-1, patch_activations.shape[-1])
+            if patch_activations is not None:
+                patch_activations = patch_activations.permute(0, 2, 3, 1)
+                patch_activations_img = patch_activations.reshape(patch_activations.shape[0], -1, patch_activations.shape[-1]) # (batch_size, img_size, num_proto)
+                patch_activations = patch_activations.reshape(-1, patch_activations.shape[-1])
 
             if self.ignore_void_class:
                 # do not predict label for void class (0)
                 target_not_void = (target != 0).nonzero().squeeze()
                 target = target[target_not_void] - 1
                 output = output[target_not_void]
-                patch_activations = patch_activations[target_not_void]
+                if patch_activations is not None:
+                    patch_activations = patch_activations[target_not_void]
 
             # TODO: This is temporary for gumbel softmax
             # if split_key == 'train':
@@ -232,52 +235,53 @@ class PatchClassificationModule(LightningModule):
             kld_loss = []
             cls_act_loss = []
             eps = 1e-9
-            for img_i in range(len(target_img)):
-                for cls_i in torch.unique(target_img[img_i]).cpu().detach().numpy():
-                    if cls_i < 0 or cls_i >= self.ppnet.prototype_class_identity.shape[1]:
-                        continue
-                    cls_protos = torch.nonzero(self.ppnet.prototype_class_identity[:, cls_i]). \
-                        flatten().cpu().detach().numpy()
-                    if len(cls_protos) < 2:
-                        continue
-
-                    cls_mask = (target_img[img_i] == cls_i)
-
-                    log_cls_activations = [torch.masked_select(patch_activations_img[img_i, :, i], cls_mask) for i in cls_protos]
-                    # non_cls_activations = [torch.masked_select(patch_activations_img[img_i, :, i], ~cls_mask) for i in cls_protos]
-
-                    log_cls_activations = [torch.nn.functional.log_softmax(act, dim=0) for act in log_cls_activations]
-
-                    # randomize 10 * 9 pairs of prototypes
-                    cls_protos_i = np.arange(len(cls_protos))
-                    if len(cls_protos_i) > 10:
-                        cls_protos_i = np.random.choice(cls_protos_i, size=10, replace=False)
-
-                    for i in cls_protos_i:
-                        # cls_class_act_loss = (torch.mean(cls_activations[i]) /
-                                              # (torch.mean(non_cls_activations[i]) + eps)) ** 2
-                        # cls_act_loss.append(cls_class_act_loss)
-
-                        if len(cls_protos) < 2 or len(log_cls_activations[0]) < 2:
-                            # no distribution over given class
+            if self.loss_weight_kld > 0:
+                for img_i in range(len(target_img)):
+                    for cls_i in torch.unique(target_img[img_i]).cpu().detach().numpy():
+                        if cls_i < 0 or cls_i >= self.ppnet.prototype_class_identity.shape[1]:
+                            continue
+                        cls_protos = torch.nonzero(self.ppnet.prototype_class_identity[:, cls_i]). \
+                            flatten().cpu().detach().numpy()
+                        if len(cls_protos) < 2:
                             continue
 
-                        log_p1_scores = log_cls_activations[i]
+                        cls_mask = (target_img[img_i] == cls_i)
 
-                        other_protos_i = np.arange(i+1, len(cls_protos))
-                        if len(other_protos_i) > 9:
-                            other_protos_i = np.random.choice(other_protos_i, size=9, replace=False)
+                        log_cls_activations = [torch.masked_select(patch_activations_img[img_i, :, i], cls_mask) for i in cls_protos]
+                        # non_cls_activations = [torch.masked_select(patch_activations_img[img_i, :, i], ~cls_mask) for i in cls_protos]
 
-                        for j in other_protos_i:
-                            log_p2_scores = log_cls_activations[j]
+                        log_cls_activations = [torch.nn.functional.log_softmax(act, dim=0) for act in log_cls_activations]
 
-                            # add kld1 and kld2 to make 'symmetrical kld'
-                            kld1 = torch.nn.functional.kl_div(log_p1_scores, log_p2_scores,
-                                                              log_target=True, reduction='sum')
-                            kld2 = torch.nn.functional.kl_div(log_p2_scores, log_p1_scores,
-                                                              log_target=True, reduction='sum')
-                            kld = (kld1 + kld2) / 2.0
-                            kld_loss.append(kld)
+                        # randomize 10 * 9 pairs of prototypes
+                        cls_protos_i = np.arange(len(cls_protos))
+                        if len(cls_protos_i) > 10:
+                            cls_protos_i = np.random.choice(cls_protos_i, size=10, replace=False)
+
+                        for i in cls_protos_i:
+                            # cls_class_act_loss = (torch.mean(cls_activations[i]) /
+                                                  # (torch.mean(non_cls_activations[i]) + eps)) ** 2
+                            # cls_act_loss.append(cls_class_act_loss)
+
+                            if len(cls_protos) < 2 or len(log_cls_activations[0]) < 2:
+                                # no distribution over given class
+                                continue
+
+                            log_p1_scores = log_cls_activations[i]
+
+                            other_protos_i = np.arange(i+1, len(cls_protos))
+                            if len(other_protos_i) > 9:
+                                other_protos_i = np.random.choice(other_protos_i, size=9, replace=False)
+
+                            for j in other_protos_i:
+                                log_p2_scores = log_cls_activations[j]
+
+                                # add kld1 and kld2 to make 'symmetrical kld'
+                                kld1 = torch.nn.functional.kl_div(log_p1_scores, log_p2_scores,
+                                                                  log_target=True, reduction='sum')
+                                kld2 = torch.nn.functional.kl_div(log_p2_scores, log_p1_scores,
+                                                                  log_target=True, reduction='sum')
+                                kld = (kld1 + kld2) / 2.0
+                                kld_loss.append(kld)
 
             if len(kld_loss) > 0:
                 kld_loss = torch.stack(kld_loss)
@@ -314,12 +318,15 @@ class PatchClassificationModule(LightningModule):
             output_class = torch.argmax(output, dim=-1)
             is_correct = output_class == target
 
-            if hasattr(self.ppnet, 'nearest_proto_only') and self.ppnet.nearest_proto_only:
-                l1_mask = 1 - torch.eye(self.ppnet.num_classes, device=self.device)
-            else:
-                l1_mask = 1 - torch.t(prototype_class_identity)
+            if self.loss_weight_l1 > 0:
+                if hasattr(self.ppnet, 'nearest_proto_only') and self.ppnet.nearest_proto_only:
+                    l1_mask = 1 - torch.eye(self.ppnet.num_classes, device=self.device)
+                else:
+                    l1_mask = 1 - torch.t(prototype_class_identity)
 
-            l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
+                l1 = (self.ppnet.last_layer.weight * l1_mask).norm(p=1)
+            else:
+                l1 = 0.0
 
             # calculate 'prototype distance cost' - we want to punish near prototypes within same class
             # prototype_class_identity.shape = (num_prototypes, self.num_classes)
@@ -603,7 +610,8 @@ class PatchClassificationModule(LightningModule):
             self.log(f'{split_key}/{key}', metrics[key] / n_batches)
 
         self.log(f'{split_key}/accuracy', metrics['n_correct'] / metrics['n_patches'])
-        self.log('l1', self.ppnet.last_layer.weight.norm(p=1).item())
+        if hasattr(self.ppnet, 'last_layer'):
+            self.log('l1', self.ppnet.last_layer.weight.norm(p=1).item())
         if hasattr(self.ppnet, 'nearest_proto_only') and self.ppnet.nearest_proto_only:
             self.log('gumbel_tau', self.ppnet.gumbel_tau)
 
@@ -675,23 +683,33 @@ class PatchClassificationModule(LightningModule):
                         }
                     ]
             else:
-                optimizer_specs = \
-                    [
-                        {
-                            "params": self.ppnet.features.parameters(),
-                            'lr': self.joint_optimizer_lr_features,
-                            'weight_decay': self.joint_optimizer_weight_decay
-                        },
-                        {
-                            'params': self.ppnet.add_on_layers.parameters(),
-                            'lr': self.joint_optimizer_lr_add_on_layers,
-                            'weight_decay': self.joint_optimizer_weight_decay
-                        },
-                        {
-                            'params': self.ppnet.prototype_vectors,
-                            'lr': self.joint_optimizer_lr_prototype_vectors
-                        }
-                    ]
+                if self.ppnet.no_prototypes:
+                    optimizer_specs = \
+                        [
+                            {
+                                "params": self.ppnet.features.parameters(),
+                                'lr': self.joint_optimizer_lr_features,
+                                'weight_decay': self.joint_optimizer_weight_decay
+                            }
+                        ]
+                else:
+                    optimizer_specs = \
+                        [
+                            {
+                                "params": self.ppnet.features.parameters(),
+                                'lr': self.joint_optimizer_lr_features,
+                                'weight_decay': self.joint_optimizer_weight_decay
+                            },
+                            {
+                                'params': self.ppnet.add_on_layers.parameters(),
+                                'lr': self.joint_optimizer_lr_add_on_layers,
+                                'weight_decay': self.joint_optimizer_weight_decay
+                            },
+                            {
+                                'params': self.ppnet.prototype_vectors,
+                                'lr': self.joint_optimizer_lr_prototype_vectors
+                            }
+                        ]
         else:  # last layer
             optimizer_specs = [
                 {
