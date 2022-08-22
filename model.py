@@ -47,7 +47,7 @@ class PPNet(nn.Module):
                  bottleneck_stride: Optional[int] = None,
                  nearest_proto_only: bool = False,
                  patch_classification: bool = False,
-                 no_prototypes: bool = True):
+                 no_prototypes: bool = False):
 
         super(PPNet, self).__init__()
         self.img_size = img_size
@@ -213,6 +213,9 @@ class PPNet(nn.Module):
         the feature input to prototype layer
         '''
         x = self.features(x)
+
+        if self.no_prototypes:
+            return x
 
         # multi-scale training (MCS)
         if isinstance(x, list):

@@ -19,6 +19,8 @@ from settings import data_path, log
 
 import numpy as np
 
+ISBI_MULTIPLIER = 10
+
 
 def resize_label(label, size):
     """
@@ -101,7 +103,7 @@ class PatchClassificationDataset(VisionDataset):
 
     def __len__(self) -> int:
         if 'isbi' in data_path and not self.push_prototypes:
-            return 10 * len(self.img_ids)
+            return ISBI_MULTIPLIER * len(self.img_ids)
         return len(self.img_ids)
 
     def get_img_path(self, img_id: str) -> str:
@@ -109,7 +111,7 @@ class PatchClassificationDataset(VisionDataset):
 
     def __getitem__(self, index: int) -> Any:
         if 'isbi' in data_path and not self.push_prototypes:
-            index = index // 10
+            index = index // ISBI_MULTIPLIER
 
         img_id = self.img_ids[index]
         img_path = os.path.join(self.img_dir, img_id + '.npy')

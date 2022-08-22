@@ -117,13 +117,15 @@ def train(
                     run=neptune_experiment
                 )
                 neptune_logger = NeptuneLogger(
-                    run=neptune_run
+                    run=neptune_run,
+                    log_model_checkpoints=False
                 )
             else:
                 neptune_logger = NeptuneLogger(
                     project="mikolajsacha/protobased-research",
                     tags=[config_path, 'segmentation', 'protopnet'],
-                    name=experiment_name
+                    name=experiment_name,
+                    log_model_checkpoints=False
                 )
             loggers.append(neptune_logger)
 
@@ -223,7 +225,8 @@ def train(
             neptune_logger = NeptuneLogger(
                 project="mikolajsacha/protobased-research",
                 tags=[config_path, 'patch_classification', 'protopnet', 'pruned'],
-                name=f'{experiment_name}_pruned' if pruned else experiment_name
+                name=f'{experiment_name}_pruned' if pruned else experiment_name,
+                log_model_checkpoints=False
             )
             loggers.append(neptune_logger)
 

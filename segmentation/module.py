@@ -550,6 +550,11 @@ class PatchClassificationModule(LightningModule):
 
     def on_validation_epoch_end(self):
         val_acc = (self.metrics['val']['n_correct'] / self.metrics['val']['n_patches']).item()
+        if self.metrics['train']['n_patches'] > 0:
+            train_acc = (self.metrics['train']['n_correct'] / self.metrics['train']['n_patches']).item()
+        else:
+            train_acc = ''
+        print(train_acc, val_acc)
 
         self.log('training_stage', float(self.training_phase))
 
