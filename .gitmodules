@@ -1,3 +1,6 @@
 [submodule "deeplab_pytorch"]
 	path = deeplab_pytorch
 	url = https://github.com/kazuto1011/deeplab-pytorch
+[submodule "mmsegmentation"]
+	path = mmsegmentation
+	url = https://github.com/open-mmlab/mmsegmentation
