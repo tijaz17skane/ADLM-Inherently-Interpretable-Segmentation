@@ -72,6 +72,11 @@ class PatchClassificationDataset(VisionDataset):
 
         if push_prototypes:
             transform = None
+        elif 'isbi' in data_path and split_key == 'train':
+            transform = transforms.Compose([
+                transforms.Normalize(mean, std),
+                transforms.GaussianBlur(3, sigma=(0.1, 2.0))
+            ])
         else:
             transform = transforms.Compose([
                 transforms.Normalize(mean, std)
@@ -95,12 +100,17 @@ class PatchClassificationDataset(VisionDataset):
         log(f"Loaded {len(self.img_ids)} samples from {split_key} set")
 
     def __len__(self) -> int:
+        if 'isbi' in data_path and not self.push_prototypes:
+            return 10 * len(self.img_ids)
         return len(self.img_ids)
 
     def get_img_path(self, img_id: str) -> str:
         return os.path.join(self.img_dir, img_id + '.png')
 
     def __getitem__(self, index: int) -> Any:
+        if 'isbi' in data_path and not self.push_prototypes:
+            index = index // 10
+
         img_id = self.img_ids[index]
         img_path = os.path.join(self.img_dir, img_id + '.npy')
         label_path = os.path.join(self.annotations_dir, img_id + '.npy')

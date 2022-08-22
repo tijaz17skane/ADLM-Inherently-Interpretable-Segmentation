@@ -165,9 +165,12 @@ def train(
             max_steps=joint_steps,
             prototype_rebalancing=1 if prototype_rebalancing_start is not None else None
         )
-        callbacks = [
-            EarlyStopping(monitor='val/accuracy', patience=10, mode='max')
-        ]
+        if module.reduce_lr_on_plateau:
+            callbacks = [
+                EarlyStopping(monitor='val/accuracy', patience=10, mode='max')
+            ]
+        else:
+            callbacks = []
         trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
                           min_steps=1, max_steps=joint_steps, callbacks=callbacks)
         trainer.fit_loop.current_epoch = current_epoch + 1
@@ -243,7 +246,7 @@ def train(
     )
     current_epoch = trainer.current_epoch if trainer is not None else 0
     trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
-                      enable_progress_bar=False, max_steps=finetune_steps)
+                      enable_progress_bar=False, max_steps=finetune_steps, log_every_n_steps=15)
     trainer.fit_loop.current_epoch = current_epoch + 1
     trainer.fit(model=module, datamodule=data_module)
 
