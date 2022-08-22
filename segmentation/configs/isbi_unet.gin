@@ -39,20 +39,20 @@ PatchClassificationModule.loss_weight_l1 = 1e-4
 PatchClassificationModule.loss_weight_kld = 0.25
 PatchClassificationModule.loss_weight_cls_act = 0.0
 
-PatchClassificationModule.joint_optimizer_lr_features = 2.5e-5
-PatchClassificationModule.joint_optimizer_lr_add_on_layers = 2.5e-4
-PatchClassificationModule.joint_optimizer_lr_prototype_vectors = 2.5e-4
-PatchClassificationModule.joint_optimizer_weight_decay = 5e-4
+PatchClassificationModule.joint_optimizer_lr_features = 1e-4
+PatchClassificationModule.joint_optimizer_lr_add_on_layers = 1e-4
+PatchClassificationModule.joint_optimizer_lr_prototype_vectors = 1e-4
+PatchClassificationModule.joint_optimizer_weight_decay = 0.0
 
-PatchClassificationModule.warm_optimizer_lr_add_on_layers = 2.5e-4
-PatchClassificationModule.warm_optimizer_lr_prototype_vectors = 2.5e-4
-PatchClassificationModule.warm_optimizer_weight_decay = 5e-4
+PatchClassificationModule.warm_optimizer_lr_add_on_layers = 1e-4
+PatchClassificationModule.warm_optimizer_lr_prototype_vectors = 1e-4
+PatchClassificationModule.warm_optimizer_weight_decay = 0.0
 
 PatchClassificationModule.last_layer_optimizer_lr = 1e-5
 
 PatchClassificationModule.ignore_void_class = False
 PatchClassificationModule.poly_lr_power = 0.9
-PatchClassificationModule.iter_size = 5
+PatchClassificationModule.iter_size = 1
 
 # rebalancing OFF
 train.prototype_rebalancing_start = None
