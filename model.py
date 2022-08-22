@@ -38,7 +38,7 @@ base_architecture_to_features = {'resnet18': resnet18_features,
                                  'vgg19_bn': vgg19_bn_features}
 
 
-@gin.configurable(allowlist=['bottleneck_stride', 'patch_classification', 'nearest_proto_only'])
+@gin.configurable(allowlist=['bottleneck_stride', 'patch_classification', 'nearest_proto_only', 'no_prototypes'])
 class PPNet(nn.Module):
     def __init__(self, features, img_size, prototype_shape,
                  proto_layer_rf_info, num_classes, init_weights=True,
@@ -46,7 +46,8 @@ class PPNet(nn.Module):
                  add_on_layers_type='bottleneck',
                  bottleneck_stride: Optional[int] = None,
                  nearest_proto_only: bool = False,
-                 patch_classification: bool = False):
+                 patch_classification: bool = False,
+                 no_prototypes: bool = True):
 
         super(PPNet, self).__init__()
         self.img_size = img_size
@@ -55,6 +56,7 @@ class PPNet(nn.Module):
         self.patch_classification = patch_classification
         self.nearest_proto_only = nearest_proto_only
         self.gumbel_tau = 0.5  # TODO make configurable, add annealing
+        self.no_prototypes = no_prototypes
 
         self.prototype_vectors = nn.Parameter(torch.rand(prototype_shape), requires_grad=True)
 
@@ -317,7 +319,10 @@ class PPNet(nn.Module):
             dist_view = dist_view.reshape(-1, num_prototypes)
             prototype_activations = self.distance_2_similarity(dist_view)
 
-            logits = self.run_last_layer(prototype_activations)
+            if self.no_prototypes:
+                logits = conv_features
+            else:
+                logits = self.run_last_layer(prototype_activations)
 
             # shape: (batch_size, n_patches_cols, n_patches_rows, num_classes)
             logits = logits.reshape(batch_size, n_patches_cols, n_patches_rows, -1)

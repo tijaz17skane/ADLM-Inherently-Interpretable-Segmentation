@@ -3,13 +3,13 @@ Trainer.gpus = 1
 construct_PPNet.base_architecture = 'unet'
 construct_PPNet.pretrained = False
 
-construct_PPNet.prototype_shape = (40, 64, 1, 1)
+construct_PPNet.prototype_shape = (2, 2, 1, 1)
 construct_PPNet.num_classes = 2
 construct_PPNet.prototype_activation_function = 'log'
 construct_PPNet.add_on_layers_type = 'deeplab_simple'
 
-unet_features.unet_n_features = 64
-deeplabv2_resnet101_features.deeplab_n_features = 64
+unet_features.unet_n_features = 2
+deeplabv2_resnet101_features.deeplab_n_features = 2
 
 train.random_seed = 20220227
 train.load_coco = False
@@ -36,7 +36,7 @@ PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_clst = 0.0
 PatchClassificationModule.loss_weight_sep = 0.0
 PatchClassificationModule.loss_weight_l1 = 1e-4
-PatchClassificationModule.loss_weight_kld = 0.25
+PatchClassificationModule.loss_weight_kld = 0.0
 PatchClassificationModule.loss_weight_cls_act = 0.0
 
 PatchClassificationModule.joint_optimizer_lr_features = 2.5e-5
@@ -62,3 +62,4 @@ PatchClassificationModule.prototype_rebalance_every = 4
 
 PPNet.bottleneck_stride = 1
 PPNet.patch_classification = True
+PPNet.no_prototypes = True

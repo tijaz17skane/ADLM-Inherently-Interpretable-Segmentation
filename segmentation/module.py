@@ -371,7 +371,7 @@ class PatchClassificationModule(LightningModule):
 
         self.batch_metrics['loss'].append(mcs_loss.item())
         self.batch_metrics['cross_entropy'].append(mcs_cross_entropy.item())
-        self.batch_metrics['kld_loss'].append(mcs_kld_loss.item())
+        self.batch_metrics['kld_loss'].append(mcs_kld_loss if isinstance(mcs_kld_loss, float) else mcs_kld_loss.item())
         # self.batch_metrics['cls_act_loss'].append(mcs_cls_act_loss.item())
         self.iter_steps += 1
 
