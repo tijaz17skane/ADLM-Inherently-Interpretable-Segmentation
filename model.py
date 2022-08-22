@@ -13,6 +13,7 @@ from densenet_features import densenet121_features, densenet161_features, densen
 from vgg_features import vgg11_features, vgg11_bn_features, vgg13_features, vgg13_bn_features, vgg16_features, \
     vgg16_bn_features, \
     vgg19_features, vgg19_bn_features
+from unet_features import unet_features
 
 from receptive_field import compute_proto_layer_rf_info_v2
 
@@ -26,6 +27,7 @@ base_architecture_to_features = {'resnet18': resnet18_features,
                                  'densenet169': densenet169_features,
                                  'densenet201': densenet201_features,
                                  'deeplabv2_resnet101': deeplabv2_resnet101_features,
+                                 'unet': unet_features,
                                  'vgg11': vgg11_features,
                                  'vgg11_bn': vgg11_bn_features,
                                  'vgg13': vgg13_features,
@@ -94,6 +96,8 @@ class PPNet(nn.Module):
         elif features_name.startswith('MSC'):
             first_add_on_layer_in_channels = \
                 [i for i in features.base.modules() if isinstance(i, nn.Conv2d)][-2].out_channels
+        elif features_name.startswith('UNET'):
+            first_add_on_layer_in_channels = features.n_classes
         else:
             raise Exception(f'{features_name[:10]} base_architecture NOT implemented')
 

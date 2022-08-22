@@ -60,6 +60,9 @@ class PatchClassificationDataset(VisionDataset):
 
         if self.only_19_from_cityscapes:
             self.convert_targets = np.vectorize(CITYSCAPES_19_EVAL_CATEGORIES.get)
+        # isbi
+        elif 'isbi' in data_path:
+            self.convert_targets = None
         else:
             # pascal
             self.convert_targets = np.vectorize(PASCAL_ID_MAPPING.get)
@@ -73,6 +76,11 @@ class PatchClassificationDataset(VisionDataset):
             transform = transforms.Compose([
                 transforms.Normalize(mean, std)
             ])
+
+        if split_key == 'train' and 'isbi' in data_path:
+            self.affine_transform = transforms.RandomAffine(0.2, translate=(0.05, 0.05), scale=(0.95, 1.05), shear=0.05)
+        else:
+            self.affine_transform = None
 
         super(PatchClassificationDataset, self).__init__(
             root=self.img_dir,
@@ -164,6 +172,14 @@ class PatchClassificationDataset(VisionDataset):
             image = self.transform(image)
         if self.target_transform is not None:
             label = self.target_transform(label)
+
+        # apply affine transforms to both image and labels
+        if self.affine_transform is not None:
+            concat_img = torch.cat((image, label.unsqueeze(0)), dim=0)
+            image = self.affine_transform(concat_img)
+
+            label = torch.round(image[3])
+            image = image[:3]
 
         return image, label
 

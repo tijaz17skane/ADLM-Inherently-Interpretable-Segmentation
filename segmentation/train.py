@@ -54,6 +54,7 @@ def train(
     os.makedirs(results_dir, exist_ok=True)
     log(f'Starting experiment in "{results_dir}" from config {config_path}')
 
+    last_checkpoint = os.path.join(results_dir, 'checkpoints', 'nopush_best.pth')
 
     if start_checkpoint:
         log(f'Loading checkpoint from {start_checkpoint}')
@@ -67,7 +68,7 @@ def train(
         pre_loaded = False
         ppnet = construct_PPNet()
 
-    if not pre_loaded:
+    if not pre_loaded and hasattr(ppnet.features, 'base'):
         if load_coco:
             log('Loading COCO pretrained weights')
             state_dict = torch.load('deeplab_pytorch/data/models/coco/deeplabv1_resnet101/'

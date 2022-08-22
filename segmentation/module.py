@@ -74,6 +74,7 @@ class PatchClassificationModule(LightningModule):
             ignore_void_class: bool = False,
             randomize_all_below_threshold: bool = False,
             iter_size: int = 1,
+            reduce_lr_on_plateau: bool = False,
     ):
         super().__init__()
         self.model_dir = model_dir
@@ -105,6 +106,7 @@ class PatchClassificationModule(LightningModule):
         self.iter_size = iter_size
         self.loss_weight_kld = loss_weight_kld
         self.loss_weight_cls_act = loss_weight_cls_act
+        self.reduce_lr_on_plateau = reduce_lr_on_plateau
 
         os.makedirs(self.prototypes_dir, exist_ok=True)
         os.makedirs(self.checkpoints_dir, exist_ok=True)
@@ -165,7 +167,8 @@ class PatchClassificationModule(LightningModule):
         if self.start_step is None:
             self.start_step = self.trainer.global_step
 
-        self.ppnet.features.base.freeze_bn()
+        if hasattr(self.ppnet.features, 'base'):
+            self.ppnet.features.base.freeze_bn()
         prototype_class_identity = self.ppnet.prototype_class_identity.to(self.device)
 
         metrics = self.metrics[split_key]
@@ -382,6 +385,9 @@ class PatchClassificationModule(LightningModule):
             lr = get_lr(optimizer)
             self.log('lr', lr, on_step=True)
 
+            if self.lr_scheduler is not None and not self.reduce_lr_on_plateau:
+                self.lr_scheduler.step()
+
             if self.prototype_rebalancing is not None:
                 with torch.no_grad():
                     output_class_oh = F.one_hot(output_class, num_classes=self.ppnet.num_classes)
@@ -539,7 +545,8 @@ class PatchClassificationModule(LightningModule):
             self.metrics[split_key] = reset_metrics()
 
         # Freeze the pre-trained batch norm
-        self.ppnet.features.base.freeze_bn()
+        if hasattr(self.ppnet.features, 'base'):
+            self.ppnet.features.base.freeze_bn()
 
     def on_validation_epoch_end(self):
         val_acc = (self.metrics['val']['n_correct'] / self.metrics['val']['n_patches']).item()
@@ -571,7 +578,7 @@ class PatchClassificationModule(LightningModule):
         if self.sanity_check_val:
             self.sanity_check_val = False
         else:
-            if self.lr_scheduler is not None:
+            if self.lr_scheduler is not None and self.reduce_lr_on_plateau:
                 self.lr_scheduler.step(val_acc)
 
     def _epoch_end(self, split_key: str):
@@ -634,33 +641,52 @@ class PatchClassificationModule(LightningModule):
                     }
                 ]
         elif self.training_phase == 1:  # joint
-            optimizer_specs = \
-                [
-                    {
-                        "params": get_params(self.ppnet.features, key="1x"),
-                        'lr': self.joint_optimizer_lr_features,
-                        'weight_decay': self.joint_optimizer_weight_decay
-                    },
-                    {
-                        "params": get_params(self.ppnet.features, key="10x"),
-                        'lr': 10 * self.joint_optimizer_lr_features,
-                        'weight_decay': self.joint_optimizer_weight_decay
-                    },
-                    {
-                        "params": get_params(self.ppnet.features, key="20x"),
-                        'lr': 10 * self.joint_optimizer_lr_features,
-                        'weight_decay': self.joint_optimizer_weight_decay
-                    },
-                    {
-                        'params': self.ppnet.add_on_layers.parameters(),
-                        'lr': self.joint_optimizer_lr_add_on_layers,
-                        'weight_decay': self.joint_optimizer_weight_decay
-                    },
-                    {
-                        'params': self.ppnet.prototype_vectors,
-                        'lr': self.joint_optimizer_lr_prototype_vectors
-                    }
-                ]
+            if hasattr(self.ppnet.features, 'base'):
+                optimizer_specs = \
+                    [
+                        {
+                            "params": get_params(self.ppnet.features, key="1x"),
+                            'lr': self.joint_optimizer_lr_features,
+                            'weight_decay': self.joint_optimizer_weight_decay
+                        },
+                        {
+                            "params": get_params(self.ppnet.features, key="10x"),
+                            'lr': 10 * self.joint_optimizer_lr_features,
+                            'weight_decay': self.joint_optimizer_weight_decay
+                        },
+                        {
+                            "params": get_params(self.ppnet.features, key="20x"),
+                            'lr': 10 * self.joint_optimizer_lr_features,
+                            'weight_decay': self.joint_optimizer_weight_decay
+                        },
+                        {
+                            'params': self.ppnet.add_on_layers.parameters(),
+                            'lr': self.joint_optimizer_lr_add_on_layers,
+                            'weight_decay': self.joint_optimizer_weight_decay
+                        },
+                        {
+                            'params': self.ppnet.prototype_vectors,
+                            'lr': self.joint_optimizer_lr_prototype_vectors
+                        }
+                    ]
+            else:
+                optimizer_specs = \
+                    [
+                        {
+                            "params": self.ppnet.features.parameters(),
+                            'lr': self.joint_optimizer_lr_features,
+                            'weight_decay': self.joint_optimizer_weight_decay
+                        },
+                        {
+                            'params': self.ppnet.add_on_layers.parameters(),
+                            'lr': self.joint_optimizer_lr_add_on_layers,
+                            'weight_decay': self.joint_optimizer_weight_decay
+                        },
+                        {
+                            'params': self.ppnet.prototype_vectors,
+                            'lr': self.joint_optimizer_lr_prototype_vectors
+                        }
+                    ]
         else:  # last layer
             optimizer_specs = [
                 {
@@ -672,13 +698,21 @@ class PatchClassificationModule(LightningModule):
         optimizer = torch.optim.Adam(optimizer_specs)
 
         if self.training_phase == 1:
-            self.lr_scheduler = ReduceLROnPlateau(
-                optimizer=optimizer,
-                mode='max',
-                verbose=True,
-                factor=0.1,
-                patience=4,
-                min_lr=1e-8
-            )
+            if self.reduce_lr_on_plateau:
+                self.lr_scheduler = ReduceLROnPlateau(
+                    optimizer=optimizer,
+                    mode='max',
+                    verbose=True,
+                    factor=0.1,
+                    patience=4,
+                    min_lr=1e-8
+                )
+            else:
+                self.lr_scheduler = PolynomialLR(
+                    optimizer=optimizer,
+                    step_size=1,
+                    iter_max=self.max_steps // self.iter_size,
+                    power=self.poly_lr_power
+                )
 
         return optimizer

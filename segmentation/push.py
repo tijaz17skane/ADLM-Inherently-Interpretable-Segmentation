@@ -181,7 +181,11 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
     # window_shift=512,
     # batch_size=4)
 
-    img_y = torch.LongTensor(dataset.convert_targets(img_y))
+    if dataset.convert_targets is not None:
+        img_y = torch.LongTensor(dataset.convert_targets(img_y))
+    else:
+        img_y = torch.LongTensor(img_y)
+
     img_tensor = to_normalized_tensor(img).unsqueeze(0).cuda()
     conv_features = ppnet.conv_features(img_tensor)
 
