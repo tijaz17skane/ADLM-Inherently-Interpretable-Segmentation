@@ -16,7 +16,7 @@ from torchvision import transforms
 
 from segmentation.constants import CITYSCAPES_MEAN, CITYSCAPES_STD
 from segmentation.dataset import resize_label
-
+from settings import data_path
 
 to_normalized_tensor = transforms.Compose([
     transforms.ToTensor(),
@@ -112,9 +112,12 @@ def find_k_nearest_patches_to_prototypes(dataset,
         proto_dist_ = np.copy(proto_dist_torch.detach().cpu().numpy())
 
         search_y = np.load(os.path.join(dataset.annotations_dir, img_id + '.npy'))
-        search_y = dataset.convert_targets(np.expand_dims(search_y, 0))
-        # -1 because we ignore void class
-        search_y = search_y - 1
+        search_y = np.expand_dims(search_y, 0)
+
+        if 'isbi' not in data_path:
+            search_y = dataset.convert_targets(search_y)
+            # -1 because we ignore void class
+            search_y = search_y - 1
 
         img_height = search_y.shape[1]
         img_width = search_y.shape[2]

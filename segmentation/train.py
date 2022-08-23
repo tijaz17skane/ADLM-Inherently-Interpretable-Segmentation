@@ -173,6 +173,7 @@ def train(
             ]
         else:
             callbacks = []
+
         trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
                           min_steps=1, max_steps=joint_steps, callbacks=callbacks)
         trainer.fit_loop.current_epoch = current_epoch + 1

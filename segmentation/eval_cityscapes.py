@@ -57,6 +57,10 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
     else:
         pred2name = {i: CATEGORIES[k] for i, k in pred2name.items()}
 
+    if 'isbi' in data_path:
+        ID_MAPPING = {0: 0, 1: 1}
+        pred2name = {0: '0', 1: '1'}
+
     cls_prototype_counts = [Counter() for _ in range(len(pred2name))]
     proto_ident = ppnet.prototype_class_identity.cpu().detach().numpy()
     mean_top_k = np.zeros(proto_ident.shape[0], dtype=float)
@@ -249,18 +253,28 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
                 distances = distances.cpu().detach().numpy()
                 pred = torch.argmax(logits, dim=0).cpu().detach().numpy()
 
-                correct_pixels += np.sum(((pred + 1) == ann) & (ann != 0))
-                #  (2,1024,2048) (2,2048,1024)
-                total_pixels += np.sum(ann != 0)
+                if 'isbi' in data_path:
+                    correct_pixels += np.sum(((pred + 1) == ann) & (ann != 0))
+                    #  (2,1024,2048) (2,2048,1024)
+                    total_pixels += np.sum(ann != 0)
+                else:
+                    correct_pixels += np.sum((pred + 1) == ann)
+                    total_pixels += np.numel(ann)
 
                 for cls_i in range(ppnet.num_classes):
                     pr = pred == cls_i
-                    gt = ann == cls_i + 1
+                    if 'isbi' in data_path:
+                        gt = ann == cls_i
+                    else:
+                        gt = ann == cls_i + 1
 
                     # ValueError: operands could not be broadcast together with shapes (2,1024,2048) (2,2048,1024)
 
                     CLS_I[cls_i] += np.sum(pr & gt)
-                    CLS_U[cls_i] += np.sum((pr | gt) & (ann != 0))  # ignore pixels where ground truth is void
+                    if 'isbi' in data_path:
+                        CLS_U[cls_i] += np.sum(pr | gt)  # ignore pixels where ground truth is void
+                    else:
+                        CLS_U[cls_i] += np.sum((pr | gt) & (ann != 0))  # ignore pixels where ground truth is void
 
                 # calculate statistics of prototypes occurrences as nearest
                 nearest_proto_cls = PROTO2CLS(nearest_proto)
@@ -394,7 +408,8 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
         plt.title(f'{model_name} ({training_phase})\nExample {example_i}. Prediction (from interpolated logits)')
         plt.imshow(img)
         plt.imshow(pred, alpha=0.5)
-        plt.imshow(np.zeros_like(pred), alpha=void_mask, vmin=0, vmax=1, cmap='gray')
+        if 'isbi' not in data_path:
+            plt.imshow(np.zeros_like(pred), alpha=void_mask, vmin=0, vmax=1, cmap='gray')
         plt.axis('off')
         plt.tight_layout()
         plt.savefig(os.path.join(RESULTS_DIR, f'example_{example_i}_prediction.png'))
@@ -409,7 +424,8 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
             f'{model_name} ({training_phase})\nExample {example_i}. Nearest prototypes (from interpolated distances)')
         plt.imshow(img)
         plt.imshow(nearest_proto, alpha=0.5, vmin=0, vmax=9)
-        plt.imshow(np.zeros_like(pred), alpha=void_mask, vmin=0, vmax=1, cmap='gray')
+        if 'isbi' not in data_path:
+            plt.imshow(np.zeros_like(pred), alpha=void_mask, vmin=0, vmax=1, cmap='gray')
         plt.tight_layout()
         plt.axis('off')
         plt.savefig(os.path.join(RESULTS_DIR, f'example_{example_i}_prototypes.png'))

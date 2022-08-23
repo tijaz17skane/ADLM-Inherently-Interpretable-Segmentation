@@ -16,6 +16,7 @@ from segmentation.constants import PASCAL_ID_MAPPING, PASCAL_CATEGORIES, CITYSCA
     CITYSCAPES_CATEGORIES
 
 from segmentation.dataset import PatchClassificationDataset
+from settings import data_path
 
 to_tensor = transforms.ToTensor()
 
@@ -41,6 +42,9 @@ def push_prototypes(dataset: PatchClassificationDataset,
         cls2name = {i: CATEGORIES[k + 1] for i, k in cls2name.items() if k < len(CATEGORIES) - 1}
     else:
         cls2name = {i: CATEGORIES[k] for i, k in cls2name.items()}
+
+    if 'isbi' in data_path:
+        cls2name = {0: '0', 1: '1'}
 
     if hasattr(prototype_network_parallel, 'module'):
         prototype_network_parallel = prototype_network_parallel.module
@@ -221,7 +225,9 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
             patch_j = int(pixel_j / patch_width)
 
             pixel_cls = int(img_y[pixel_i, pixel_j].item())
-            if pixel_cls > 0:
+            if 'isbi' in data_path:
+                class_to_patch_index_dict[pixel_cls].add((patch_i, patch_j))
+            elif pixel_cls > 0:
                 class_to_patch_index_dict[pixel_cls - 1].add((patch_i, patch_j))
 
     # proto 6 71 16 0.22671318 [563, 572, 127, 136]
@@ -326,6 +332,9 @@ def update_prototypes_on_image(dataset: PatchClassificationDataset,
 
             # show activation map only on the ground truth class
             y_mask = img_y.cpu().detach().numpy() == (target_class + 1)
+            if 'isbi' in data_path:
+                y_mask = img_y.cpu().detach().numpy() == target_class
+
             upsampled_act_img_j_gt = upsampled_act_img_j * y_mask
 
             proto_bound_j = find_continuous_high_activation_crop(upsampled_act_img_j_gt, rf_prototype_j[1:],
