@@ -7,6 +7,7 @@ import gin
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from sklearn.metrics import f1_score
 from torch.nn import functional as F
 from torchvision import transforms
 
@@ -138,6 +139,8 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
     correct_pixels, total_pixels = 0, 0
 
+    all_pixes_gt, all_pixels_pred = [], []
+
     with torch.no_grad():
         for batch_img_files in tqdm(batched_img_files, desc='evaluating'):
             img_tensors = []
@@ -169,13 +172,15 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
 
                 if window_size != -1 or window_overlap != -1:
                     for i in range(0, int(img_tensor.shape[1] / (window_size - window_overlap))):
-                        start_i, end_i = i * (window_size - window_overlap), i * (window_size - window_overlap) + window_size
+                        start_i, end_i = i * (window_size - window_overlap), i * (
+                                    window_size - window_overlap) + window_size
 
                         if end_i > img_tensor.shape[1]:
                             start_i, end_i = img_tensor.shape[1] - window_size, img_tensor.shape[1]
 
                         for j in range(0, int(img_tensor.shape[2] / (window_size - window_overlap))):
-                            start_j, end_j = j * (window_size - window_overlap), j * (window_size - window_overlap) + window_size
+                            start_j, end_j = j * (window_size - window_overlap), j * (
+                                        window_size - window_overlap) + window_size
 
                             if end_j > img_tensor.shape[2]:
                                 start_j, end_j = img_tensor.shape[2] - window_size, img_tensor.shape[2]
@@ -201,13 +206,18 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
                     sub_batch_tensors = img_tensors[i:j]
                     sub_batch_logits, sub_batch_distances = ppnet.forward(sub_batch_tensors)
                     batch_logits.append(sub_batch_logits)
-                    batch_distances.append(sub_batch_distances)
+                    if sub_batch_distances is not None:
+                        batch_distances.append(sub_batch_distances)
                 batch_logits = torch.concat(batch_logits, dim=0)
-                batch_distances = torch.concat(batch_distances, dim=0)
+                if len(batch_distances) > 0:
+                    batch_distances = torch.concat(batch_distances, dim=0)
             else:
                 batch_logits, batch_distances = ppnet.forward(img_tensors)
+                if batch_distances is None:
+                    batch_distances = []
 
             batch_logits = batch_logits.permute(0, 3, 1, 2)
+            distances = None
 
             for sample_i in range(len(batch_img_files)):
 
@@ -216,50 +226,60 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
                 if pascal:
                     logits = torch.zeros((batch_logits.shape[1], interpolate_img_size, interpolate_img_size),
                                          device=batch_logits.device)
-                    distances = torch.zeros((batch_distances.shape[1], interpolate_img_size, interpolate_img_size),
-                                            device=batch_logits.device)
+                    if len(batch_distances) > 0:
+                        distances = torch.zeros((batch_distances.shape[1], interpolate_img_size, interpolate_img_size),
+                                                device=batch_logits.device)
                     num_predictions = torch.zeros((1, interpolate_img_size, interpolate_img_size),
                                                   device=batch_logits.device)
                 else:
                     logits = torch.zeros((batch_logits.shape[1],) + ann.shape, device=batch_logits.device)
-                    distances = torch.zeros((batch_distances.shape[1],) + ann.shape, device=batch_logits.device)
+                    if len(batch_distances) > 0:
+                        distances = torch.zeros((batch_distances.shape[1],) + ann.shape, device=batch_logits.device)
                     num_predictions = torch.zeros((1,) + ann.shape, device=batch_logits.device)
 
                 for sample_window_i in sample2windows[sample_i]:
                     sample_logits = torch.unsqueeze(batch_logits[sample_window_i], 0)
-                    sample_distances = torch.unsqueeze(batch_distances[sample_window_i], 0)
                     start_i, end_i, start_j, end_j = img_tensors_locations[sample_window_i]
 
                     this_window_size = end_i - start_i, end_j - start_j
 
                     logits[:, start_i: end_i, start_j: end_j] += \
                         F.interpolate(sample_logits, size=this_window_size, mode='bilinear', align_corners=False)[0]
-                    distances[:, start_i: end_i, start_j: end_j] += \
-                        F.interpolate(sample_distances, size=this_window_size, mode='bilinear', align_corners=False)[0]
+                    if len(batch_distances) > 0:
+                        sample_distances = torch.unsqueeze(batch_distances[sample_window_i], 0)
+                        distances[:, start_i: end_i, start_j: end_j] += \
+                            F.interpolate(sample_distances, size=this_window_size, mode='bilinear',
+                                          align_corners=False)[0]
                     num_predictions[:, start_i: end_i, start_j: end_j] += 1
 
                 logits = logits / num_predictions
-                distances = distances / num_predictions
+                if distances is not None:
+                    distances = distances / num_predictions
 
                 if pascal:
                     logits = torch.unsqueeze(logits, 0)
-                    distances = torch.unsqueeze(distances, 0)
                     logits = F.interpolate(logits, size=ann.shape,
                                            mode='bilinear', align_corners=False)[0]
-                    distances = F.interpolate(distances, size=ann.shape,
+                    if distances is not None:
+                        distances = torch.unsqueeze(distances, 0)
+                        distances = F.interpolate(distances, size=ann.shape,
                                               mode='bilinear', align_corners=False)[0]
 
-                nearest_proto = torch.argmin(distances, dim=0).cpu().detach().numpy()
-                distances = distances.cpu().detach().numpy()
+                if distances is not None:
+                    nearest_proto = torch.argmin(distances, dim=0).cpu().detach().numpy()
+                    distances = distances.cpu().detach().numpy()
+
                 pred = torch.argmax(logits, dim=0).cpu().detach().numpy()
 
-                if 'isbi' in data_path:
+                if 'isbi' not in data_path:
                     correct_pixels += np.sum(((pred + 1) == ann) & (ann != 0))
                     #  (2,1024,2048) (2,2048,1024)
                     total_pixels += np.sum(ann != 0)
                 else:
-                    correct_pixels += np.sum((pred + 1) == ann)
-                    total_pixels += np.numel(ann)
+                    correct_pixels += np.sum(pred == ann)
+                    total_pixels += np.size(ann)
+                    all_pixels_pred.append(torch.softmax(logits, dim=0).cpu().detach().numpy()[1].flatten())
+                    all_pixes_gt.append(ann.flatten())
 
                 for cls_i in range(ppnet.num_classes):
                     pr = pred == cls_i
@@ -277,35 +297,52 @@ def run_evaluation(model_name: str, training_phase: str, batch_size: int = 2, pa
                         CLS_U[cls_i] += np.sum((pr | gt) & (ann != 0))  # ignore pixels where ground truth is void
 
                 # calculate statistics of prototypes occurrences as nearest
-                nearest_proto_cls = PROTO2CLS(nearest_proto)
+                if distances is not None:
+                    nearest_proto_cls = PROTO2CLS(nearest_proto)
 
-                for class_i, class_name in pred2name.items():
-                    is_class_proto = (pred == class_i) & (nearest_proto_cls == class_i)
-                    for proto_i, proto_num in enumerate(cls2protos[class_i]):
-                        cls_prototype_counts[class_i][proto_i] += np.sum(is_class_proto & (nearest_proto == proto_num))
-                del is_class_proto
+                    for class_i, class_name in pred2name.items():
+                        is_class_proto = (pred == class_i) & (nearest_proto_cls == class_i)
+                        for proto_i, proto_num in enumerate(cls2protos[class_i]):
+                            cls_prototype_counts[class_i][proto_i] += np.sum(is_class_proto & (nearest_proto == proto_num))
+                    del is_class_proto
 
-                # calculate top K nearest prototypes for random sample of pixels for speed
-                n_random_pixels = 100
+                    # calculate top K nearest prototypes for random sample of pixels for speed
+                    n_random_pixels = 100
 
-                rows = np.random.randint(distances.shape[1], size=n_random_pixels)
-                cols = np.random.randint(distances.shape[2], size=n_random_pixels)
+                    rows = np.random.randint(distances.shape[1], size=n_random_pixels)
+                    cols = np.random.randint(distances.shape[2], size=n_random_pixels)
 
-                sample_distances = distances[:, rows, cols]
-                sample_preds = pred[rows, cols]
+                    sample_distances = distances[:, rows, cols]
+                    sample_preds = pred[rows, cols]
 
-                nearest_pixel_protos = np.argsort(sample_distances, axis=0)
-                is_class_proto = PROTO2CLS(nearest_pixel_protos) == sample_preds
+                    nearest_pixel_protos = np.argsort(sample_distances, axis=0)
+                    is_class_proto = PROTO2CLS(nearest_pixel_protos) == sample_preds
 
-                for k in range(nearest_pixel_protos.shape[0]):
-                    nearest_k = np.sum(is_class_proto[:k + 1]) / (k + 1)
-                    mean_top_k[k] += nearest_k * 100 / n_random_pixels
+                    for k in range(nearest_pixel_protos.shape[0]):
+                        nearest_k = np.sum(is_class_proto[:k + 1]) / (k + 1)
+                        mean_top_k[k] += nearest_k * 100 / n_random_pixels
 
     pixel_accuracy = correct_pixels / total_pixels * 100
 
     CLS_IOU = {cls_i: (CLS_I[cls_i] * 100) / u for cls_i, u in CLS_U.items() if u > 0}
     mean_iou = np.mean(list(CLS_IOU.values()))
-    log(f'{model_name} {training_phase} mIOU: {mean_iou}')
+    log(f'{model_name} {training_phase} mIOU: {np.round(mean_iou, 4)}, pixel accuracy: {np.round(pixel_accuracy, 4)}')
+
+    if len(all_pixes_gt) > 0:
+        all_pixes_gt = np.concatenate(all_pixes_gt)
+        all_pixels_pred = np.concatenate(all_pixels_pred)
+        min_error = 1.0
+        min_th = None
+        for threshold in np.arange(0, 1.05, 0.05):
+            th_pred = all_pixels_pred >= threshold
+            fscore = f1_score(all_pixes_gt, th_pred)
+            error = 1.0 - fscore
+            if error < min_error:
+                min_error = error
+                min_th = threshold
+        print(f"Pixel error: {min_error} (for threshold: {np.round(min_th, 4)})")
+        with open(os.path.join(RESULTS_DIR, 'pixel_error.txt'), 'w') as fp:
+            fp.write(str(min_error))
 
     keys = list(sorted(CLS_IOU.keys()))
 
