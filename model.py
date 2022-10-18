@@ -13,7 +13,6 @@ from densenet_features import densenet121_features, densenet161_features, densen
 from vgg_features import vgg11_features, vgg11_bn_features, vgg13_features, vgg13_bn_features, vgg16_features, \
     vgg16_bn_features, \
     vgg19_features, vgg19_bn_features
-from unet_features import unet_features
 
 from receptive_field import compute_proto_layer_rf_info_v2
 
@@ -27,7 +26,6 @@ base_architecture_to_features = {'resnet18': resnet18_features,
                                  'densenet169': densenet169_features,
                                  'densenet201': densenet201_features,
                                  'deeplabv2_resnet101': deeplabv2_resnet101_features,
-                                 'unet': unet_features,
                                  'vgg11': vgg11_features,
                                  'vgg11_bn': vgg11_bn_features,
                                  'vgg13': vgg13_features,
@@ -38,25 +36,20 @@ base_architecture_to_features = {'resnet18': resnet18_features,
                                  'vgg19_bn': vgg19_bn_features}
 
 
-@gin.configurable(allowlist=['bottleneck_stride', 'patch_classification', 'nearest_proto_only', 'no_prototypes'])
+@gin.configurable(allowlist=['bottleneck_stride', 'patch_classification'])
 class PPNet(nn.Module):
     def __init__(self, features, img_size, prototype_shape,
                  proto_layer_rf_info, num_classes, init_weights=True,
                  prototype_activation_function='log',
                  add_on_layers_type='bottleneck',
                  bottleneck_stride: Optional[int] = None,
-                 nearest_proto_only: bool = False,
-                 patch_classification: bool = False,
-                 no_prototypes: bool = False):
+                 patch_classification: bool = False):
 
         super(PPNet, self).__init__()
         self.img_size = img_size
         self.epsilon = 1e-4
         self.bottleneck_stride = bottleneck_stride
         self.patch_classification = patch_classification
-        self.nearest_proto_only = nearest_proto_only
-        self.gumbel_tau = 0.5  # TODO make configurable, add annealing
-        self.no_prototypes = no_prototypes
 
         self.prototype_vectors = nn.Parameter(torch.rand(prototype_shape), requires_grad=True)
 
@@ -85,9 +78,6 @@ class PPNet(nn.Module):
         # this has to be named features to allow the precise loading
         self.features = features
 
-        if self.no_prototypes:
-            return
-
         features_name = str(self.features).upper()
         if features_name.startswith('VGG') or features_name.startswith('RES'):
             first_add_on_layer_in_channels = \
@@ -101,8 +91,6 @@ class PPNet(nn.Module):
         elif features_name.startswith('MSC'):
             first_add_on_layer_in_channels = \
                 [i for i in features.base.modules() if isinstance(i, nn.Conv2d)][-2].out_channels
-        elif features_name.startswith('UNET'):
-            first_add_on_layer_in_channels = features.n_classes
         else:
             raise Exception(f'{features_name[:10]} base_architecture NOT implemented')
 
@@ -133,15 +121,6 @@ class PPNet(nn.Module):
                     add_on_layers.append(nn.Sigmoid())
                 current_in_channels = current_in_channels // 2
             self.add_on_layers = nn.Sequential(*add_on_layers)
-        elif add_on_layers_type == 'deeplab':
-            log('deeplab add_on_layers')
-            self.add_on_layers = nn.Sequential(
-                nn.ReLU(),
-                nn.Conv2d(in_channels=first_add_on_layer_in_channels,
-                          out_channels=self.prototype_shape[1],
-                          kernel_size=1),
-                nn.Sigmoid()
-            )
         elif add_on_layers_type == 'deeplab_simple':
             log('deeplab_simple add_on_layers')
             self.add_on_layers = nn.Sequential(
@@ -161,12 +140,8 @@ class PPNet(nn.Module):
         self.ones = nn.Parameter(torch.ones(self.prototype_shape),
                                  requires_grad=False)
 
-        if hasattr(self, 'nearest_proto_only') and self.nearest_proto_only:
-            self.last_layer = nn.Linear(self.num_classes, self.num_classes,
-                                        bias=False)  # do not use bias
-        else:
-            self.last_layer = nn.Linear(self.num_prototypes, self.num_classes,
-                                        bias=False)  # do not use bias
+        self.last_layer = nn.Linear(self.num_prototypes, self.num_classes,
+                                    bias=False)  # do not use bias
 
         if init_weights:
             self._initialize_weights()
@@ -184,41 +159,13 @@ class PPNet(nn.Module):
         return self.prototype_class_identity.shape[1]
 
     def run_last_layer(self, prototype_activations):
-        if hasattr(self, 'nearest_proto_only') and self.nearest_proto_only:
-            cls_logits = []
-            for cls_i in range(self.prototype_class_identity.shape[1]):
-                proto_ind = torch.nonzero(self.prototype_class_identity[:, cls_i] == 1).flatten()
-                if len(proto_ind) == 0:
-                    cls_activation = torch.zeros(prototype_activations.shape[0],
-                                                 device=prototype_activations.device)
-                else:
-                    cls_prototype_activations = prototype_activations[:, proto_ind]
-                    if self.training:
-                        # Sample soft categorical using reparametrization trick
-                        gumbel_softmax = F.gumbel_softmax(
-                            cls_prototype_activations,
-                            tau=self.gumbel_tau,
-                            hard=False
-                        )
-                        cls_prototype_activations = cls_prototype_activations * gumbel_softmax
-                        cls_activation = torch.sum(cls_prototype_activations, dim=-1)
-                    else:
-                        cls_activation, _ = torch.max(cls_prototype_activations, dim=-1)
-
-                cls_logits.append(cls_activation)
-            cls_logits = torch.stack(cls_logits, dim=-1)
-            return self.last_layer(cls_logits)
-        else:
-            return self.last_layer(prototype_activations)
+        return self.last_layer(prototype_activations)
 
     def conv_features(self, x):
         '''
         the feature input to prototype layer
         '''
         x = self.features(x)
-
-        if self.no_prototypes:
-            return x
 
         # multi-scale training (MCS)
         if isinstance(x, list):
@@ -313,13 +260,6 @@ class PPNet(nn.Module):
         if isinstance(conv_features, list):
             return [self.forward_from_conv_features(c) for c in conv_features]
 
-        if self.no_prototypes:
-            conv_features = conv_features.reshape(conv_features.shape[0], conv_features.shape[2],
-                                                  conv_features.shape[3], conv_features.shape[1])
-            conv_features = torch.cat((-conv_features, conv_features), dim=-1)
-
-            return conv_features, None
-
         # distances.shape = (batch_size, num_prototypes, n_patches_cols, n_patches_rows)
         distances = self._l2_convolution(conv_features)
 
@@ -342,6 +282,8 @@ class PPNet(nn.Module):
 
             return logits, distances
         else:
+            # original function from ProtoPNet
+
             # global min pooling
             min_distances = -F.max_pool2d(-distances,
                                           kernel_size=(distances.size()[2],
@@ -382,10 +324,9 @@ class PPNet(nn.Module):
 
         # changing self.last_layer in place
         # changing in_features and out_features make sure the numbers are consistent
-        if not (hasattr(self, 'nearest_proto_only') and self.nearest_proto_only):
-            self.last_layer.in_features = self.num_prototypes
-            self.last_layer.out_features = self.num_classes
-            self.last_layer.weight.data = self.last_layer.weight.data[:, prototypes_to_keep]
+        self.last_layer.in_features = self.num_prototypes
+        self.last_layer.out_features = self.num_classes
+        self.last_layer.weight.data = self.last_layer.weight.data[:, prototypes_to_keep]
 
         # self.ones is nn.Parameter
         self.ones = nn.Parameter(self.ones.data[prototypes_to_keep, ...],
@@ -422,12 +363,8 @@ class PPNet(nn.Module):
         incorrect_class_connection = incorrect_strength
         correct_class_connection = 1
 
-        if hasattr(self, 'nearest_proto_only') and self.nearest_proto_only:
-            positive_one_weights_locations = torch.eye(self.num_classes)
-            negative_one_weights_locations = torch.zeros(self.num_classes)
-        else:
-            positive_one_weights_locations = torch.t(self.prototype_class_identity)
-            negative_one_weights_locations = 1 - positive_one_weights_locations
+        positive_one_weights_locations = torch.t(self.prototype_class_identity)
+        negative_one_weights_locations = 1 - positive_one_weights_locations
 
         self.last_layer.weight.data.copy_(
             correct_class_connection * positive_one_weights_locations

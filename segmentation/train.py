@@ -45,7 +45,6 @@ def train(
         finetune_steps: int = gin.REQUIRED,
         warmup_batch_size: int = gin.REQUIRED,
         joint_batch_size: int = gin.REQUIRED,
-        prototype_rebalancing_start: Optional[int] = gin.REQUIRED,
         load_coco: bool = False
 ):
     seed_everything(random_seed)
@@ -68,7 +67,7 @@ def train(
         pre_loaded = False
         ppnet = construct_PPNet()
 
-    if not pre_loaded and hasattr(ppnet.features, 'base'):
+    if not pre_loaded:
         if load_coco:
             log('Loading COCO pretrained weights')
             state_dict = torch.load('deeplab_pytorch/data/models/coco/deeplabv1_resnet101/'
@@ -113,28 +112,26 @@ def train(
         if use_neptune:
             if neptune_experiment is not None:
                 neptune_run = neptune.init(
-                    project="mikolajsacha/protobased-research",
+                    project=os.environ['NEPTUNE_PROJECT'],
                     run=neptune_experiment
                 )
                 neptune_logger = NeptuneLogger(
-                    run=neptune_run,
-                    log_model_checkpoints=False
+                    run=neptune_run
                 )
             else:
                 neptune_logger = NeptuneLogger(
-                    project="mikolajsacha/protobased-research",
+                    project=os.environ['NEPTUNE_PROJECT'],
                     tags=[config_path, 'segmentation', 'protopnet'],
-                    name=experiment_name,
-                    log_model_checkpoints=False
+                    name=experiment_name
                 )
-            loggers.append(neptune_logger)
+                loggers.append(neptune_logger)
 
             neptune_run = neptune_logger.run
             neptune_run['config_file'].upload(f'segmentation/configs/{config_path}.gin')
             neptune_run['config'] = json_gin_config
 
         shutil.copy(f'segmentation/configs/{config_path}.gin', os.path.join(results_dir, 'config.gin'))
-        
+
         if warmup_steps > 0:
             data_module = PatchClassificationDataModule(batch_size=warmup_batch_size)
             module = PatchClassificationModule(
@@ -142,14 +139,11 @@ def train(
                 ppnet=ppnet,
                 training_phase=0,
                 max_steps=warmup_steps,
-                prototype_rebalancing=prototype_rebalancing_start
             )
-            ppnet.gumbel_tau = 1.0  # TODO make configurable, add annealing
             trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
                               min_steps=1, max_steps=warmup_steps)
             trainer.fit(model=module, datamodule=data_module)
             current_epoch = trainer.current_epoch
-            ppnet.gumbel_tau = 0.5  # TODO make configurable, add annealing
         else:
             current_epoch = -1
 
@@ -164,26 +158,12 @@ def train(
             model_dir=results_dir,
             ppnet=ppnet,
             training_phase=1,
-            max_steps=joint_steps,
-            prototype_rebalancing=1 if prototype_rebalancing_start is not None else None
+            max_steps=joint_steps
         )
-        if module.reduce_lr_on_plateau:
-            callbacks = [
-                EarlyStopping(monitor='val/accuracy', patience=10, mode='max')
-            ]
-        else:
-            callbacks = []
-
         trainer = Trainer(logger=loggers, checkpoint_callback=None, enable_progress_bar=False,
-                          min_steps=1, max_steps=joint_steps, callbacks=callbacks)
+                          min_steps=1, max_steps=joint_steps)
         trainer.fit_loop.current_epoch = current_epoch + 1
         trainer.fit(model=module, datamodule=data_module)
-
-        # last_checkpoint = os.path.join(results_dir, 'checkpoints/nopush_last.pth')
-        # if os.path.exists(last_checkpoint):
-            # log(f'Loading model from {last_checkpoint}')
-            # ppnet = torch.load(last_checkpoint)
-            # ppnet = ppnet.cuda()
 
         log('SAVING PROTOTYPES')
         ppnet = ppnet.cuda()
@@ -224,10 +204,9 @@ def train(
         use_neptune = bool(int(os.environ['USE_NEPTUNE']))
         if use_neptune:
             neptune_logger = NeptuneLogger(
-                project="mikolajsacha/protobased-research",
+                project=os.environ['NEPTUNE_PROJECT'],
                 tags=[config_path, 'patch_classification', 'protopnet', 'pruned'],
-                name=f'{experiment_name}_pruned' if pruned else experiment_name,
-                log_model_checkpoints=False
+                name=f'{experiment_name}_pruned' if pruned else experiment_name
             )
             loggers.append(neptune_logger)
 
@@ -246,11 +225,10 @@ def train(
         ppnet=ppnet,
         training_phase=2,
         max_steps=finetune_steps,
-        prototype_rebalancing=None
     )
     current_epoch = trainer.current_epoch if trainer is not None else 0
     trainer = Trainer(logger=loggers, callbacks=callbacks, checkpoint_callback=None,
-                      enable_progress_bar=False, max_steps=finetune_steps, log_every_n_steps=15)
+                      enable_progress_bar=False, max_steps=finetune_steps)
     trainer.fit_loop.current_epoch = current_epoch + 1
     trainer.fit(model=module, datamodule=data_module)
 

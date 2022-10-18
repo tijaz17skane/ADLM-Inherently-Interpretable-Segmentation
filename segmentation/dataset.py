@@ -19,8 +19,6 @@ from settings import data_path, log
 
 import numpy as np
 
-ISBI_MULTIPLIER = 10
-
 
 def resize_label(label, size):
     """
@@ -62,9 +60,6 @@ class PatchClassificationDataset(VisionDataset):
 
         if self.only_19_from_cityscapes:
             self.convert_targets = np.vectorize(CITYSCAPES_19_EVAL_CATEGORIES.get)
-        # isbi
-        elif 'isbi' in data_path:
-            self.convert_targets = None
         else:
             # pascal
             self.convert_targets = np.vectorize(PASCAL_ID_MAPPING.get)
@@ -74,20 +69,10 @@ class PatchClassificationDataset(VisionDataset):
 
         if push_prototypes:
             transform = None
-        elif 'isbi' in data_path and split_key == 'train':
-            transform = transforms.Compose([
-                transforms.Normalize(mean, std),
-                transforms.GaussianBlur(3, sigma=(0.1, 2.0))
-            ])
         else:
             transform = transforms.Compose([
                 transforms.Normalize(mean, std)
             ])
-
-        if split_key == 'train' and 'isbi' in data_path:
-            self.affine_transform = transforms.RandomAffine(0.2, translate=(0.05, 0.05), scale=(0.95, 1.05), shear=0.05)
-        else:
-            self.affine_transform = None
 
         super(PatchClassificationDataset, self).__init__(
             root=self.img_dir,
@@ -102,17 +87,12 @@ class PatchClassificationDataset(VisionDataset):
         log(f"Loaded {len(self.img_ids)} samples from {split_key} set")
 
     def __len__(self) -> int:
-        if 'isbi' in data_path and not self.push_prototypes:
-            return ISBI_MULTIPLIER * len(self.img_ids)
         return len(self.img_ids)
 
     def get_img_path(self, img_id: str) -> str:
         return os.path.join(self.img_dir, img_id + '.png')
 
     def __getitem__(self, index: int) -> Any:
-        if 'isbi' in data_path and not self.push_prototypes:
-            index = index // ISBI_MULTIPLIER
-
         img_id = self.img_ids[index]
         img_path = os.path.join(self.img_dir, img_id + '.npy')
         label_path = os.path.join(self.annotations_dir, img_id + '.npy')
@@ -184,14 +164,6 @@ class PatchClassificationDataset(VisionDataset):
             image = self.transform(image)
         if self.target_transform is not None:
             label = self.target_transform(label)
-
-        # apply affine transforms to both image and labels
-        if self.affine_transform is not None:
-            concat_img = torch.cat((image, label.unsqueeze(0)), dim=0)
-            image = self.affine_transform(concat_img)
-
-            label = torch.round(image[3])
-            image = image[:3]
 
         return image, label
 

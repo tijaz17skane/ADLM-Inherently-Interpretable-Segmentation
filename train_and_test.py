@@ -183,14 +183,8 @@ def joint(model, log=print):
         model = model.module
     for p in model.features.parameters():
         p.requires_grad = True
-
-    if hasattr(model, 'add_on_layers'):
-        for p in model.add_on_layers.parameters():
-            p.requires_grad = True
-
-    if hasattr(model, 'prototype_vectors'):
-        model.prototype_vectors.requires_grad = True
-
-    if hasattr(model, 'last_layer'):
-        for p in model.last_layer.parameters():
-            p.requires_grad = True
+    for p in model.add_on_layers.parameters():
+        p.requires_grad = True
+    model.prototype_vectors.requires_grad = True
+    for p in model.last_layer.parameters():
+        p.requires_grad = True
