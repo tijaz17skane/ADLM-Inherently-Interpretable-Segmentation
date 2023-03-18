@@ -33,7 +33,7 @@ def resize_label(label, size):
 
 @gin.configurable(allowlist=['mean', 'std', 'image_margin_size',
                              'window_size', 'only_19_from_cityscapes',
-                             'scales'])
+                             'scales', 'cells'])
 class PatchClassificationDataset(VisionDataset):
     def __init__(
             self,
@@ -46,6 +46,7 @@ class PatchClassificationDataset(VisionDataset):
             window_size: Optional[Tuple[int, int]] = None,
             only_19_from_cityscapes: bool = False,
             scales: Tuple[int] = (1.0, ),
+            cells: bool = False
     ):
         self.mean = mean
         self.std = std
@@ -57,6 +58,7 @@ class PatchClassificationDataset(VisionDataset):
         self.window_size = window_size
         self.only_19_from_cityscapes = only_19_from_cityscapes
         self.scales = scales
+        self.cells = cells
 
         if self.only_19_from_cityscapes:
             self.convert_targets = np.vectorize(CITYSCAPES_19_EVAL_CATEGORIES.get)
@@ -123,8 +125,9 @@ class PatchClassificationDataset(VisionDataset):
         label = Image.fromarray(label).resize((w, h), resample=Image.NEAREST)
         label = np.asarray(label, dtype=np.int64)
 
-        # [0-255] to [0-1]
-        image = image / 255.0
+        if not self.cells:
+            # [0-255] to [0-1]
+            image = image / 255.0
 
         # Padding to fit for crop_size
         h, w = label.shape
