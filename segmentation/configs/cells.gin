@@ -35,7 +35,7 @@ PatchClassificationDataModule.train_key = 'train_aug'
 
 PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_l1 = 1e-4
-PatchClassificationModule.loss_weight_kld = 0.0
+PatchClassificationModule.loss_weight_kld = 0.25
 
 PatchClassificationModule.joint_optimizer_lr_features = 2.5e-5
 PatchClassificationModule.joint_optimizer_lr_add_on_layers = 2.5e-4

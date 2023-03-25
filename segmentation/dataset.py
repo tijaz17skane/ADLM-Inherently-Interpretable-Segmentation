@@ -62,9 +62,11 @@ class PatchClassificationDataset(VisionDataset):
 
         if self.only_19_from_cityscapes:
             self.convert_targets = np.vectorize(CITYSCAPES_19_EVAL_CATEGORIES.get)
-        else:
+        elif not cells:
             # pascal
             self.convert_targets = np.vectorize(PASCAL_ID_MAPPING.get)
+        else:
+            self.convert_targets = False
 
         # we generated cityscapes images with max margin earlier
         self.img_dir = os.path.join(data_path, f'img_with_margin_{self.image_margin_size}/{split_key}')
@@ -125,7 +127,9 @@ class PatchClassificationDataset(VisionDataset):
         label = Image.fromarray(label).resize((w, h), resample=Image.NEAREST)
         label = np.asarray(label, dtype=np.int64)
 
-        if not self.cells:
+        if self.cells:
+            image = image.astype(float)
+        else:
             # [0-255] to [0-1]
             image = image / 255.0
 
