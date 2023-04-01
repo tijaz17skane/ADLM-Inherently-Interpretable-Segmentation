@@ -66,7 +66,7 @@ class PatchClassificationDataset(VisionDataset):
             # pascal
             self.convert_targets = np.vectorize(PASCAL_ID_MAPPING.get)
         else:
-            self.convert_targets = False
+            self.convert_targets = None
 
         # we generated cityscapes images with max margin earlier
         self.img_dir = os.path.join(data_path, f'img_with_margin_{self.image_margin_size}/{split_key}')

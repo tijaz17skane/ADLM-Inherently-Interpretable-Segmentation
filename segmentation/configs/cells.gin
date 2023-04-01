@@ -22,8 +22,8 @@ train.joint_steps = 150000 # 30000 batches
 train.warmup_batch_size = 2
 train.joint_batch_size = 2
 
-PatchClassificationDataset.mean = [1583.53, 1583.53, 1583.53]
-PatchClassificationDataset.std = [107.69, 107.69, 107.69]
+PatchClassificationDataset.mean = [106.51, 106.51, 106.51]
+PatchClassificationDataset.std = [7.25, 7.25, 7.25]
 PatchClassificationDataset.image_margin_size = 0
 PatchClassificationDataset.window_size = (321, 321)
 PatchClassificationDataset.only_19_from_cityscapes = False
@@ -31,7 +31,7 @@ PatchClassificationDataset.scales = (0.5, 1.5)
 PatchClassificationDataset.cells = True
 
 PatchClassificationDataModule.dataloader_n_jobs = 8
-PatchClassificationDataModule.train_key = 'train_aug'
+PatchClassificationDataModule.train_key = 'train'
 
 PatchClassificationModule.loss_weight_crs_ent = 1.0
 PatchClassificationModule.loss_weight_l1 = 1e-4
