@@ -29,9 +29,8 @@ We convert images to .npy files for faster loading during training. To do this, 
 # replace <N> with the number of parallel jobs
 python -m segmentation.preprocess_cityscapes <N> # for cityscapes
 python -m segmentation.preprocess_cityscapes preprocess-cityscapes-obj-masks <N>
-
 ```
-like:
+like this:
 ```
 python -m segmentation.preprocess_cityscapes preprocess-cityscapes 4
 python -m segmentation.preprocess_cityscapes preprocess-cityscapes-obj-masks 4
