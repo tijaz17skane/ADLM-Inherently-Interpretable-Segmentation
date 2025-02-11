@@ -51,7 +51,7 @@ python -m segmentation.train cityscapes_kld_coco <your_training_run_name>
 # train on Cityscapes, with similarity loss, ImageNet pretraining
 python -m segmentation.train cityscapes_kld_imnet <your_training_run_name>
 
-#FOR Medical Decathlon for Pancreas
+# train on Medical Decathlon for Pancreas
 python -m segmentation.train mds_new <your_training_run_name>
 
 ```
