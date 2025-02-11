@@ -2,6 +2,7 @@
 This repository is a fork of https://github.com/cfchen-duke/ProtoPNet, adapted for ProtoSeg.
 
 We also use pytorch implemention of DeepLab from: https://github.com/kazuto1011/deeplab-pytorch
+
 Since I implemented this using CityScapes Dataset only, I did not have to follow the guide for PASCAL VOC. Download the Coco checkpoints form the link above and you're good to go. 
 
 
@@ -18,9 +19,8 @@ Before any script run:
 
 ### Downloading data
 
-Please use the following links to download Cityscapes or PASCAL VOC 2012:
+Please use the following links to download Cityscapes -[or PASCAL VOC 2012]:
 - Cityscapes: https://www.cityscapes-dataset.com/downloads/ (gtFine_trainvaltest.zip and leftImgbit_trainvaltest.zip are needed)
-- Pascal VOC 2012: Folllow instruction here: https://github.com/kazuto1011/deeplab-pytorch/blob/master/data/datasets/voc12/README.md. Please download the augmentated variant ("SegmentationAug" and "SegmentationClassAug").
 
 ### Preprocessing data
 We convert images to .npy files for faster loading during training. To do this, run the following commands:
