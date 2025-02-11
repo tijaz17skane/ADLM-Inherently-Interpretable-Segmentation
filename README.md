@@ -37,8 +37,6 @@ python -m segmentation.preprocess_cityscapes preprocess-cityscapes-obj-masks 4
 python -m segmentation.img_to_numpy
 ```
 
-
-
 ## Training model
 
 
@@ -53,15 +51,9 @@ python -m segmentation.train cityscapes_kld_coco <your_training_run_name>
 # train on Cityscapes, with similarity loss, ImageNet pretraining
 python -m segmentation.train cityscapes_kld_imnet <your_training_run_name>
 
+#FOR Medical Decathlon for Pancreas
+python -m segmentation.train mds_new <your_training_run_name>
 
-# train on PASCAL VOC 2012, no similarity loss, ImageNet pretraining
-python -m segmentation.train pascal_no_kld_imnet <your_training_run_name>
-
-# train on PASCAL VOC 2012, with similarity loss, COCO pretraining
-python -m segmentation.train pascal_kld_coco <your_training_run_name>
-
-# train on PASCAL VOC 2012, with similarity loss, ImageNet pretraining
-python -m segmentation.train pascal_kld_imnet <your_training_run_name>
 ```
 
 ### pruning and finetuning after pruning
