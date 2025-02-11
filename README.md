@@ -21,6 +21,8 @@ Before any script run:
 
 Please use the following links to download Cityscapes:
 - Cityscapes: https://www.cityscapes-dataset.com/downloads/ (gtFine_trainvaltest.zip and leftImgbit_trainvaltest.zip are needed)
+- Medical Decathlon (Task 07- Pancreas): http://medicaldecathlon.com/dataaws/
+  
 
 ### Preprocessing data
 We convert images to .npy files for faster loading during training. To do this, run the following commands:
@@ -35,6 +37,18 @@ like this:
 python -m segmentation.preprocess_cityscapes preprocess-cityscapes 4
 python -m segmentation.preprocess_cityscapes preprocess-cityscapes-obj-masks 4
 python -m segmentation.img_to_numpy
+```
+```
+# For Medical Decathlon Dataset Run the following
+# 1. Convert nifTIs from imagesTr and labelsTr into Numpy for easier manipulation.
+
+# 2. Extract slices from scans and repeat each channel to make each npy 3 channel deep. and float -> int
+
+# 3. Normalize images.npy values to 0 to 255. convert images.npy to images.png and store both
+
+# 4. Do a train, validation and test split for the data, ensuring that the labels correspond to images
+
+# 5. make all_images.json
 ```
 
 ## Training model
