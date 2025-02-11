@@ -19,7 +19,7 @@ Before any script run:
 
 ### Downloading data
 
-Please use the following links to download Cityscapes <s>or PASCAL VOC 2012 <s>
+Please use the following links to download Cityscapes:
 - Cityscapes: https://www.cityscapes-dataset.com/downloads/ (gtFine_trainvaltest.zip and leftImgbit_trainvaltest.zip are needed)
 
 ### Preprocessing data
@@ -28,10 +28,17 @@ We convert images to .npy files for faster loading during training. To do this, 
 ```
 # replace <N> with the number of parallel jobs
 python -m segmentation.preprocess_cityscapes <N> # for cityscapes
-python -m segmentation.preprocess_pascal <N> # for cityscapes
+python -m segmentation.preprocess_cityscapes preprocess-cityscapes-obj-masks <N>
 
+```
+like:
+```
+python -m segmentation.preprocess_cityscapes preprocess-cityscapes 4
+python -m segmentation.preprocess_cityscapes preprocess-cityscapes-obj-masks 4
 python -m segmentation.img_to_numpy
 ```
+
+
 
 ## Training model
 
