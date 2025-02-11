@@ -2,6 +2,8 @@
 This repository is a fork of https://github.com/cfchen-duke/ProtoPNet, adapted for ProtoSeg.
 
 We also use pytorch implemention of DeepLab from: https://github.com/kazuto1011/deeplab-pytorch
+Since I implemented this using CityScapes Dataset only, I did not have to follow the guide for PASCAL VOC. Download the Coco checkpoints form the link above and you're good to go. 
+
 
 ## Setting environment
 
