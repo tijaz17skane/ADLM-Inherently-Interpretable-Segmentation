@@ -19,7 +19,7 @@ Before any script run:
 
 ### Downloading data
 
-Please use the following links to download Cityscapes -[or PASCAL VOC 2012]:
+Please use the following links to download Cityscapes <s>or PASCAL VOC 2012<s>:
 - Cityscapes: https://www.cityscapes-dataset.com/downloads/ (gtFine_trainvaltest.zip and leftImgbit_trainvaltest.zip are needed)
 
 ### Preprocessing data
