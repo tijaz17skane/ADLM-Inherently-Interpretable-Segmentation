@@ -63,7 +63,6 @@ Then generate a list of the preprocessed images in the splits.
 ```
 python -m segmentation.preprocessPancreasScans /path/to/datasets/task07_pancreas /path/to/data
 python-m segmentation.generateImageList.py /path/to/img_with_margin_0 /path/to/data
-
 ```
 
 ## Training model
