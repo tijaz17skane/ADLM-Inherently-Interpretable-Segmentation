@@ -57,16 +57,11 @@ python -m segmentation.preprocess_cityscapes preprocess-cityscapes-obj-masks 4
 python -m segmentation.img_to_numpy
 ```
 ```
-# For Medical Decathlon Dataset Run the following
-# 1. Convert NIfTIs  from imagesTr and labelsTr into Numpy for easier manipulation.
+# For Medical Decathlon Dataset Run the following to make it a fit for the architecture used
 
-# 2. Extract slices from scans and repeat each channel to make each npy 3 channel deep. and float -> int
+python -m segmentation.ProcessPancreasScans /path/to/datasets/task07_pancreas /path/to/data
+python-m segmentation.GenerateImageList.py /path/to/img_with_margin_0 /path/to/data
 
-# 3. Normalize images.npy values to 0 to 255. convert images.npy to images.png and store both
-
-# 4. Do a train, validation and test split for the data, ensuring that the labels correspond to images
-
-# 5. make all_images.json
 ```
 
 ## Training model
