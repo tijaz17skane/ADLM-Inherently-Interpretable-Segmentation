@@ -44,7 +44,7 @@ ProtoSegFolder
 ```
 ### Preprocessing data
 We convert images to .npy files for faster loading during training. To do this, run the following commands:
-
+#### CityScapes
 ```
 # replace <N> with the number of parallel jobs
 python -m segmentation.preprocess_cityscapes <N> # for cityscapes
@@ -56,9 +56,11 @@ python -m segmentation.preprocess_cityscapes preprocess-cityscapes 4
 python -m segmentation.preprocess_cityscapes preprocess-cityscapes-obj-masks 4
 python -m segmentation.img_to_numpy
 ```
+#### Medical Decathlon Dataset
+Modify paths according to your downloads. and If you're using a dataset other than Pancreas.
+The following commands will convert the scans into numpy slices, resize and normalize them, convert images.npy to pngs and make train, test and validation splits.
+Then generate a list of the preprocessed images in the splits.
 ```
-# For Medical Decathlon Dataset Run the following to make it a fit for the architecture used
-
 python -m segmentation.ProcessPancreasScans /path/to/datasets/task07_pancreas /path/to/data
 python-m segmentation.GenerateImageList.py /path/to/img_with_margin_0 /path/to/data
 
