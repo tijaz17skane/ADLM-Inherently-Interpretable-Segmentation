@@ -58,7 +58,7 @@ python -m segmentation.img_to_numpy
 ```
 ```
 # For Medical Decathlon Dataset Run the following
-# 1. Convert nifTIs from imagesTr and labelsTr into Numpy for easier manipulation.
+# 1. Convert NIfTIs  from imagesTr and labelsTr into Numpy for easier manipulation.
 
 # 2. Extract slices from scans and repeat each channel to make each npy 3 channel deep. and float -> int
 
