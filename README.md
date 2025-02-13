@@ -106,7 +106,7 @@ python -m segmentation.train mds_new <your_training_run_name> --pruned
 # The evaluation saves mIOU results in model directory. It also generates a few additional plots.
 # <training_staged> should be one of: 'warmup', 'nopush', 'push', 'pruned'
 
-python -m segmentation.eval_valid <your_training_run_name> <training_stage>
+python -m segmentation.eval_valid <your_cityscapes_training_run_name> <training_stage>
 python -m segmentation.eval_test <your_cityscapes_training_run_name> <training_stage>
 
 ```
@@ -116,6 +116,6 @@ python -m segmentation.eval_test <your_cityscapes_training_run_name> <training_s
 # The evaluation saves mIOU results in model directory. It also generates a few additional plots.
 # <training_staged> should be one of: 'warmup', 'nopush', 'push', 'pruned'
 
-python -m segmentation.eval_valid <your_training_run_name> <training_stage>
+python -m segmentation.eval_valid <your_mds_training_run_name> <training_stage>
 python -m segmentation.eval_test <your_mds_training_run_name> <training_stage>
 ```
