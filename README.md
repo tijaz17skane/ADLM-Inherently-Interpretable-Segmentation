@@ -22,6 +22,24 @@ Before any script run:
 Please use the following links to download Cityscapes:
 - Cityscapes: https://www.cityscapes-dataset.com/downloads/ (gtFine_trainvaltest.zip and leftImgbit_trainvaltest.zip are needed)
 - Medical Decathlon (Task 07- Pancreas): http://medicaldecathlon.com/dataaws/
+
+#### I Used the following directory structure:
+
+# ProtoSegFolder
+
+.
+├── proto-segmentation
+│   ├── deeplab_pytorch
+│   └── all other elements of the cloned repository
+└── datasets
+    ├── cityscapes
+    │   ├── gtfine
+    │   └── leftImg8Bit
+    └── task07_pancreas
+        ├── ImagesTs
+        ├── ImagesTr
+        ├── labelsTr
+        └── etc
   
 
 ### Preprocessing data
