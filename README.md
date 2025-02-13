@@ -106,7 +106,6 @@ python -m segmentation.train mds_new <your_training_run_name> --pruned
 
 python -m segmentation.eval_valid <your_cityscapes_training_run_name> <training_stage>
 python -m segmentation.eval_test <your_cityscapes_training_run_name> <training_stage>
-
 ```
 #### Medical Decathlon Segmentation Dataset
 ```
