@@ -82,7 +82,6 @@ python -m segmentation.train cityscapes_kld_imnet <your_training_run_name>
 
 # train on Medical Decathlon for Pancreas
 python -m segmentation.train mds_new <your_training_run_name>
-
 ```
 
 ### pruning and finetuning after pruning
