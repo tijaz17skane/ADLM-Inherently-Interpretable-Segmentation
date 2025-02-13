@@ -27,7 +27,7 @@ Please use the following links to download Cityscapes:
 
 # ProtoSegFolder
 ```
-.
+ProtoSegFolder
 ├── proto-segmentation
 │   ├── deeplab_pytorch
 │   └── all other elements of the cloned repository
