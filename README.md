@@ -26,7 +26,7 @@ Please use the following links to download Cityscapes:
 #### I Used the following directory structure:
 
 # ProtoSegFolder
-
+```
 .
 ├── proto-segmentation
 │   ├── deeplab_pytorch
@@ -41,7 +41,7 @@ Please use the following links to download Cityscapes:
         ├── labelsTr
         └── etc
   
-
+```
 ### Preprocessing data
 We convert images to .npy files for faster loading during training. To do this, run the following commands:
 
