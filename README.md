@@ -59,7 +59,12 @@ python -m segmentation.img_to_numpy
 #### Medical Decathlon Segmentation Dataset
 Modify paths according to your downloads. and If you're using a dataset other than Pancreas.
 The following commands will convert the scans into numpy slices, resize and normalize them, convert images.npy to pngs and make train, test and validation splits.
+
+
 You may edit the preprocessPancreasScans.py to skip the conversion to png
+
+Don't forget to replace contents of segmentation/constants.py with segmentation/constants1.py when going with MDS
+
 Then generate a list of the preprocessed images in the splits.
 ```
 python -m segmentation.preprocessPancreasScans /path/to/datasets/task07_pancreas /path/to/data
