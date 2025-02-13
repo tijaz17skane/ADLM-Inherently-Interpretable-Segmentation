@@ -56,13 +56,13 @@ python -m segmentation.preprocess_cityscapes preprocess-cityscapes 4
 python -m segmentation.preprocess_cityscapes preprocess-cityscapes-obj-masks 4
 python -m segmentation.img_to_numpy
 ```
-#### Medical Decathlon Dataset
+#### Medical Decathlon Segmentation Dataset
 Modify paths according to your downloads. and If you're using a dataset other than Pancreas.
 The following commands will convert the scans into numpy slices, resize and normalize them, convert images.npy to pngs and make train, test and validation splits.
 Then generate a list of the preprocessed images in the splits.
 ```
-python -m segmentation.ProcessPancreasScans /path/to/datasets/task07_pancreas /path/to/data
-python-m segmentation.GenerateImageList.py /path/to/img_with_margin_0 /path/to/data
+python -m segmentation.preprocessPancreasScans /path/to/datasets/task07_pancreas /path/to/data
+python-m segmentation.generateImageList.py /path/to/img_with_margin_0 /path/to/data
 
 ```
 
@@ -70,6 +70,7 @@ python-m segmentation.GenerateImageList.py /path/to/img_with_margin_0 /path/to/d
 
 
 ### warmup + joint training + prototype push
+#### CityScapes
 ```
 # train on Cityscapes, no similarity loss, ImageNet pretraining
 python -m segmentation.train cityscapes_no_kld_imnet <your_training_run_name>
@@ -79,28 +80,42 @@ python -m segmentation.train cityscapes_kld_coco <your_training_run_name>
 
 # train on Cityscapes, with similarity loss, ImageNet pretraining
 python -m segmentation.train cityscapes_kld_imnet <your_training_run_name>
-
+```
+#### Medical Decathlon Segmentation Dataset
+```
 # train on Medical Decathlon for Pancreas
 python -m segmentation.train mds_new <your_training_run_name>
 ```
 
-### pruning and finetuning after pruning
+### Pruning and finetuning after pruning
+#### CityScapes
 ```
-python -m segmentation.run_pruning pascal_kld_imnet <your_training_run_name>
-python -m segmentation.train pascal_kld_imnet <your_training_run_name> --pruned
+python -m segmentation.run_pruning cityscapes_kld_imnet <your_training_run_name>
+python -m segmentation.train cityscapes_kld_imnet <your_training_run_name> --pruned
+```
+#### Medical Decathlon Segmentation Dataset
+```
+python -m segmentation.run_pruning mds_new <your_training_run_name>
+python -m segmentation.train mds_new <your_training_run_name> --pruned
 ```
 
 ## Evaluation
+#### CityScapes
 ```
 # Evaluation on valid set for Cityscapes ('cityscapes_kld_imnet' should be replaced with your training config)
 # The evaluation saves mIOU results in model directory. It also generates a few additional plots.
 # <training_staged> should be one of: 'warmup', 'nopush', 'push', 'pruned'
+
 python -m segmentation.eval_valid <your_training_run_name> <training_stage>
-
-# For evaluating on Pascal dataset, add '-p' flag
-python -m segmentation.eval_valid <your_training_run_name> <training_stage> -p
-
-# Generating predictions on cityscapes or pascal test set:
 python -m segmentation.eval_test <your_cityscapes_training_run_name> <training_stage>
-python -m segmentation.eval_test <your_pascal_training_run_name> <training_stage> -p
+
+```
+#### Medical Decathlon Segmentation Dataset
+```
+# Evaluation on valid set for Cityscapes ('cityscapes_kld_imnet' should be replaced with your training config)
+# The evaluation saves mIOU results in model directory. It also generates a few additional plots.
+# <training_staged> should be one of: 'warmup', 'nopush', 'push', 'pruned'
+
+python -m segmentation.eval_valid <your_training_run_name> <training_stage>
+python -m segmentation.eval_test <your_mds_training_run_name> <training_stage>
 ```
