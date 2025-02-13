@@ -102,7 +102,6 @@ python -m segmentation.train mds_new <your_training_run_name> --pruned
 ## Evaluation
 #### CityScapes
 ```
-# Evaluation on valid set for Cityscapes ('cityscapes_kld_imnet' should be replaced with your training config)
 # The evaluation saves mIOU results in model directory. It also generates a few additional plots.
 # <training_staged> should be one of: 'warmup', 'nopush', 'push', 'pruned'
 
@@ -112,7 +111,6 @@ python -m segmentation.eval_test <your_cityscapes_training_run_name> <training_s
 ```
 #### Medical Decathlon Segmentation Dataset
 ```
-# Evaluation on valid set for Cityscapes ('cityscapes_kld_imnet' should be replaced with your training config)
 # The evaluation saves mIOU results in model directory. It also generates a few additional plots.
 # <training_staged> should be one of: 'warmup', 'nopush', 'push', 'pruned'
 
