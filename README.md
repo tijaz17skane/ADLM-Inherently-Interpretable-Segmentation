@@ -125,18 +125,9 @@ python -m segmentation.eval_test <your_mds_training_run_name> <training_stage>
 
 # U-Noise for Inherently Interpretable Segmentation for Medical Decathlon Dataset - Pancreas
 
-# U-Noise - PyTorch Implementation
-
 [**U-Noise: Learnable Noise Masks for Interpretable Image
 Segmentation**](https://arxiv.org/abs/2101.05791)<br>
 Teddy Koker, Fatemehsadat Mireshghallah, Tom Titcombe, Georgios Kaissis
-
-Image + Mask | U-Noise Large | Occlusion Sensitivity | Grad-CAM
----          | ---           | ---                   | ---
-![](visualizations/original_0.png) | ![](visualizations/unoise_large_0.png) | ![](visualizations/occlusion_0.png) | ![](visualizations/grad_cam_0.png)
-![](visualizations/original_1.png) | ![](visualizations/unoise_large_1.png) | ![](visualizations/occlusion_1.png) | ![](visualizations/grad_cam_1.png)
-![](visualizations/original_2.png) | ![](visualizations/unoise_large_2.png) | ![](visualizations/occlusion_2.png) | ![](visualizations/grad_cam_2.png)
-![](visualizations/original_3.png) | ![](visualizations/unoise_large_3.png) | ![](visualizations/occlusion_3.png) | ![](visualizations/grad_cam_3.png)
 
 ## Download Data/Pre-trained Models
 
