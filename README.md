@@ -1,4 +1,5 @@
-# Semantic Segmentation with Prototypes
+# ProtoSeg - Implementation for Inherently Interpretable Semantic Segmentation with Prototypes on CityScapes and Medical Decathlon Dataset
+
 This repository is a fork of https://github.com/cfchen-duke/ProtoPNet, adapted for ProtoSeg.
 
 We also use pytorch implemention of DeepLab from: https://github.com/kazuto1011/deeplab-pytorch
@@ -123,7 +124,7 @@ python -m segmentation.eval_test <your_mds_training_run_name> <training_stage>
 ```
 
 
-# U-Noise for Inherently Interpretable Segmentation for Medical Decathlon Dataset - Pancreas
+# U-Noise - Implementation for Inherently Interpretable Segmentation for Medical Decathlon Dataset - Pancreas
 
 [**U-Noise: Learnable Noise Masks for Interpretable Image
 Segmentation**](https://arxiv.org/abs/2101.05791)<br>
